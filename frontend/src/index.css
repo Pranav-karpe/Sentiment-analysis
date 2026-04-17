@@ -1,0 +1,251 @@
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+/* ── Base background ── */
+body { background-color: #0a0a0a; }
+:root:not(.dark) body { background-color: #ffffff; }
+
+/* ── Glassy background orbs ── */
+body::before, body::after {
+  content: "";
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(120px);
+  pointer-events: none;
+  z-index: 0;
+}
+body::before {
+  width: 700px; height: 700px;
+  top: -200px; left: -150px;
+  background: radial-gradient(circle, rgba(249,115,22,0.13) 0%, transparent 70%);
+  animation: orbFloat1 12s ease-in-out infinite alternate;
+}
+body::after {
+  width: 550px; height: 550px;
+  bottom: -150px; right: -100px;
+  background: radial-gradient(circle, rgba(249,115,22,0.09) 0%, transparent 70%);
+  animation: orbFloat2 15s ease-in-out infinite alternate;
+}
+/* third orb — center subtle */
+#root::after {
+  content: "";
+  position: fixed;
+  width: 400px; height: 400px;
+  top: 40%; left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  filter: blur(140px);
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(circle, rgba(249,115,22,0.05) 0%, transparent 70%);
+  animation: orbFloat3 20s ease-in-out infinite alternate;
+}
+@keyframes orbFloat1 {
+  from { transform: translate(0,0) scale(1); }
+  to   { transform: translate(60px,80px) scale(1.15); }
+}
+@keyframes orbFloat2 {
+  from { transform: translate(0,0) scale(1); }
+  to   { transform: translate(-50px,-60px) scale(1.1); }
+}
+@keyframes orbFloat3 {
+  from { transform: translate(-50%,-50%) scale(1); }
+  to   { transform: translate(-50%,-50%) scale(1.3); }
+}
+
+/* light mode orbs */
+:root:not(.dark) body::before { background: radial-gradient(circle, rgba(249,115,22,0.06) 0%, transparent 70%); }
+:root:not(.dark) body::after  { background: radial-gradient(circle, rgba(249,115,22,0.04) 0%, transparent 70%); }
+
+/* ── Content above orbs ── */
+#root { position: relative; z-index: 1; }
+
+/* ── Subtle grid texture (dark only) ── */
+:root.dark #root::before {
+  content: "";
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px);
+  background-size: 72px 72px;
+  pointer-events: none; z-index: 0;
+}
+
+/* ── Glass card ── */
+.glass-card {
+  background: rgba(255,255,255,0.03);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.04) inset,
+    0 8px 32px rgba(0,0,0,0.4),
+    0 1px 0 rgba(255,255,255,0.06) inset;
+}
+:root:not(.dark) .glass-card {
+  background: rgba(255,255,255,0.78);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,0.9) inset;
+}
+
+/* ── Card hover lift ── */
+.card-hover {
+  transition: transform 0.25s cubic-bezier(0.22,1,0.36,1), box-shadow 0.25s ease;
+}
+.card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.06) inset,
+    0 16px 48px rgba(0,0,0,0.5),
+    0 0 40px rgba(249,115,22,0.06);
+}
+:root:not(.dark) .card-hover:hover {
+  box-shadow: 0 16px 48px rgba(0,0,0,0.12), 0 0 30px rgba(249,115,22,0.06);
+}
+
+/* ── Navbar glass ── */
+.glass-nav {
+  background: rgba(10,10,10,0.6);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset;
+}
+:root:not(.dark) .glass-nav {
+  background: rgba(255,255,255,0.82);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(0,0,0,0.06);
+}
+
+/* ── Logo icon glow ── */
+.logo-icon-glow {
+  box-shadow: 0 0 16px rgba(249,115,22,0.5), 0 0 32px rgba(249,115,22,0.2);
+  transition: box-shadow 0.3s ease;
+}
+.logo-icon-glow:hover,
+button:hover .logo-icon-glow {
+  box-shadow: 0 0 24px rgba(249,115,22,0.7), 0 0 48px rgba(249,115,22,0.3);
+}
+
+/* ── Logo name shimmer ── */
+.logo-name-glow {
+  background: linear-gradient(90deg,
+    #e5e7eb 0%, #e5e7eb 30%,
+    #ffffff 50%,
+    #e5e7eb 70%, #e5e7eb 100%);
+  background-size: 300% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: logoShimmer 4s linear infinite;
+}
+:root:not(.dark) .logo-name-glow {
+  background: linear-gradient(90deg,
+    #111827 0%, #111827 30%,
+    #f97316 50%,
+    #111827 70%, #111827 100%);
+  background-size: 300% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: logoShimmer 4s linear infinite;
+}
+@keyframes logoShimmer {
+  0%   { background-position: 100% center; }
+  100% { background-position: -100% center; }
+}
+
+/* ── Hero heading ── */
+.hero-heading {
+  opacity: 0;
+  animation: heroFadeUp 0.7s cubic-bezier(0.22,1,0.36,1) 0.1s forwards;
+}
+@keyframes heroFadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── "sentiment" word gradient ── */
+.sentiment-word {
+  background: linear-gradient(90deg, #f97316 0%, #fdba74 40%, #f97316 80%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradientShift 3s linear infinite;
+  filter: drop-shadow(0 0 28px rgba(249,115,22,0.55));
+}
+:root:not(.dark) .sentiment-word {
+  filter: drop-shadow(0 0 14px rgba(249,115,22,0.35));
+}
+@keyframes gradientShift {
+  0%   { background-position: 0% center; }
+  100% { background-position: 200% center; }
+}
+
+/* ── Badge float ── */
+.badge-float {
+  animation: badgeFloat 3s ease-in-out infinite;
+}
+@keyframes badgeFloat {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-4px); }
+}
+
+/* ── Feature pills hover shimmer ── */
+.feature-pill {
+  transition: border-color 0.2s, color 0.2s, transform 0.2s;
+}
+.feature-pill:hover {
+  border-color: rgba(249,115,22,0.4);
+  color: #f97316;
+  transform: translateY(-2px);
+}
+
+/* ── Orange glow button ── */
+.btn-glow {
+  box-shadow: 0 0 20px rgba(249,115,22,0.35), 0 4px 12px rgba(249,115,22,0.2);
+  transition: box-shadow 0.2s ease, transform 0.15s ease;
+}
+.btn-glow:hover:not(:disabled) {
+  box-shadow: 0 0 32px rgba(249,115,22,0.55), 0 6px 20px rgba(249,115,22,0.3);
+}
+
+/* ── Result card reveal ── */
+.result-reveal {
+  animation: resultReveal 0.4s cubic-bezier(0.22,1,0.36,1) forwards;
+}
+@keyframes resultReveal {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Result icon bounce ── */
+.result-icon {
+  animation: iconBounce 0.5s cubic-bezier(0.22,1,0.36,1) 0.2s both;
+}
+@keyframes iconBounce {
+  from { transform: scale(0.5) rotate(-10deg); opacity: 0; }
+  to   { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+/* ── Scrollbar (dark) ── */
+:root.dark ::-webkit-scrollbar { width: 6px; }
+:root.dark ::-webkit-scrollbar-track { background: #0a0a0a; }
+:root.dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+:root.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* ── Textarea glow (ChatGPT-style) ── */
+.textarea-glow {
+  transition: box-shadow 0.2s ease;
+}
+.textarea-glow:hover {
+  box-shadow: 0 0 0 1px rgba(249,115,22,0.2), 0 0 12px rgba(249,115,22,0.08);
+}
+.textarea-focused {
+  box-shadow: 0 0 0 2px rgba(249,115,22,0.45), 0 0 20px rgba(249,115,22,0.15) !important;
+}

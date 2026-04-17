@@ -1,0 +1,14 @@
+flask
+flask-cors
+pymongo
+joblib
+scikit-learn
+werkzeug
+nltk
+pandas
+reportlab
+PyJWT
+Pillow
+pytesseract
+pymupdf
+certifi
