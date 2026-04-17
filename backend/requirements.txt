@@ -3,9 +3,9 @@ flask-cors
 pymongo
 joblib
 scikit-learn
-werkzeug
-nltk
+numpy
 pandas
+werkzeug
 reportlab
 PyJWT
 Pillow

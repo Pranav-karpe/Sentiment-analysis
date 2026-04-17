@@ -1,6 +1,7 @@
 import warnings
 warnings.filterwarnings("ignore")
 
+import os
 import re
 import certifi
 import joblib
@@ -26,7 +27,7 @@ app = Flask(__name__)
 CORS(app)
 
 # ── JWT Config ────────────────────────────────────────────────────────────────
-JWT_SECRET  = "sentimentai_jwt_secret_2024"
+JWT_SECRET  = os.getenv("JWT_SECRET", "sentimentai_jwt_secret_2024")
 JWT_EXPIRES = timedelta(hours=48)
 
 def make_token(email):
@@ -47,11 +48,14 @@ def verify_token():
         return None
 
 # ── MongoDB Atlas (TLS fixed) ─────────────────────────────────────────────────
-client = MongoClient(
-    "mongodb+srv://karpepranav7_db_user:admin123@cluster0.y3oeaso.mongodb.net/?retryWrites=true&w=majority",
-    tls=True,
-    tlsCAFile=certifi.where()
+MONGO_URI = os.getenv(
+    "MONGO_URI",
+    "mongodb+srv://karpepranav7_db_user:admin123@cluster0.y3oeaso.mongodb.net/?retryWrites=true&w=majority"
 )
+if not MONGO_URI:
+    raise RuntimeError("MONGO_URI environment variable is not set")
+
+client = MongoClient(MONGO_URI, tls=True, tlsCAFile=certifi.where())
 db         = client["sentimentDB"]
 users      = db["users"]
 collection = db["history"]
