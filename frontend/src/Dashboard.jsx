@@ -4,6 +4,7 @@ import axios from "axios";
 import { authHeaders, clearSession } from "./App";
 import AboutModal from "./AboutModal";
 import LandingPage from "./LandingPage";
+import API from "./api";
 
 export default function Dashboard({ dark, setDark }) {
   const navigate = useNavigate();
@@ -28,7 +29,7 @@ export default function Dashboard({ dark, setDark }) {
     if (!text.trim()) { setError("Please enter some text before analyzing."); return; }
     setLoading(true); setResult(null); setError("");
     try {
-      const res = await axios.post("http://127.0.0.1:5000/predict",
+      const res = await axios.post(`${API}/predict`,
         { text, email: user?.email ?? "" }, authHeaders());
       setResult({ sentiment: res.data.sentiment, confidence: res.data.confidence });
     } catch (e) {
@@ -46,7 +47,7 @@ export default function Dashboard({ dark, setDark }) {
     fd.append("email", user?.email ?? "");
     try {
       const headers = authHeaders().headers || {};
-      const res = await axios.post("http://127.0.0.1:5000/analyze-file", fd, { headers });
+      const res = await axios.post(`${API}/analyze-file`, fd, { headers });
       setResult({ sentiment: res.data.sentiment, confidence: res.data.confidence });
       setText(res.data.text || "");
     } catch (ex) {
@@ -56,7 +57,7 @@ export default function Dashboard({ dark, setDark }) {
 
   const exportPDF = async () => {
     try {
-      const res = await axios.post("http://127.0.0.1:5000/export-report",
+      const res = await axios.post(`${API}/export-report`,
         { text, sentiment: result?.sentiment, confidence: result?.confidence,
           positive_count: 0, negative_count: 0 },
         { ...authHeaders(), responseType: "blob" });

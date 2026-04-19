@@ -1,5 +1,6 @@
 import { useState } from "react";
 import axios from "axios";
+import API from "./api";
 
 export default function ForgotPassword({ onNavigate }) {
   const [form, setForm] = useState({ email: "", new_password: "" });
@@ -15,7 +16,7 @@ export default function ForgotPassword({ onNavigate }) {
     setSuccess("");
     setLoading(true);
     try {
-      const res = await axios.post("http://127.0.0.1:5000/forgot-password", form);
+      const res = await axios.post(`${API}/forgot-password`, form);
       setSuccess(res.data.message + " — you can now sign in.");
     } catch (err) {
       setError(err.response?.data?.error || "Something went wrong");

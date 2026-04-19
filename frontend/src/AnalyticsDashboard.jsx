@@ -4,6 +4,7 @@ import axios from "axios";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { authHeaders, clearSession } from "./App";
 import AboutModal from "./AboutModal";
+import API from "./api";
 
 export default function AnalyticsDashboard({ dark, setDark }) {
   const navigate = useNavigate();
@@ -23,7 +24,7 @@ export default function AnalyticsDashboard({ dark, setDark }) {
   useEffect(() => {
     if (!user?.email) { setHistory([]); setLoadingHistory(false); return; }
     setLoadingHistory(true);
-    fetch(`http://127.0.0.1:5000/history?email=${encodeURIComponent(user.email)}`,
+    fetch(`${API}/history?email=${encodeURIComponent(user.email)}`,
       { headers: (authHeaders().headers || {}) })
       .then((r) => r.json())
       .then((d) => {
@@ -36,7 +37,7 @@ export default function AnalyticsDashboard({ dark, setDark }) {
 
   const deleteHistory = async (id) => {
     try {
-      await axios.delete(`http://127.0.0.1:5000/delete-history/${id}`, authHeaders());
+      await axios.delete(`${API}/delete-history/${id}`, authHeaders());
       setHistory((prev) => prev.filter((i) => i.id !== id));
     } catch { }
   };

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import axios from "axios";
+import API from "./api";
 
 export default function Login({ onNavigate, onLoginSuccess, onGuest }) {
   const [form, setForm] = useState({ email: "", password: "" });
@@ -13,7 +14,7 @@ export default function Login({ onNavigate, onLoginSuccess, onGuest }) {
     setError("");
     setLoading(true);
     try {
-      const res = await axios.post("http://127.0.0.1:5000/login", form);
+      const res = await axios.post(`${API}/login`, form);
       onLoginSuccess(res.data.name, res.data.email, res.data.token);
     } catch (err) {
       if (err.response) {

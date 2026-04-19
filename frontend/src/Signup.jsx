@@ -1,5 +1,6 @@
 import { useState } from "react";
 import axios from "axios";
+import API from "./api";
 
 export default function Signup({ onNavigate, onLoginSuccess }) {
   const [form, setForm] = useState({ name: "", email: "", password: "" });
@@ -13,8 +14,8 @@ export default function Signup({ onNavigate, onLoginSuccess }) {
     setError("");
     setLoading(true);
     try {
-      await axios.post("http://127.0.0.1:5000/signup", form);
-      const res = await axios.post("http://127.0.0.1:5000/login", {
+      await axios.post(`${API}/signup`, form);
+      const res = await axios.post(`${API}/login`, {
         email: form.email,
         password: form.password,
       });

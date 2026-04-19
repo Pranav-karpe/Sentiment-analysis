@@ -24,7 +24,7 @@ except ImportError:
 
 # ── App ───────────────────────────────────────────────────────────────────────
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173", os.getenv("FRONTEND_URL", "*")])
 
 # ── JWT Config ────────────────────────────────────────────────────────────────
 JWT_SECRET  = os.getenv("JWT_SECRET", "sentimentai_jwt_secret_2024")
