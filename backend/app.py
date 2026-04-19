@@ -7,7 +7,6 @@ import certifi
 import joblib
 import jwt
 from datetime import datetime, timezone, timedelta
-from functools import wraps
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -61,8 +60,9 @@ users      = db["users"]
 collection = db["history"]
 
 # ── ML Model ──────────────────────────────────────────────────────────────────
-model      = joblib.load("model/model.pkl")
-vectorizer = joblib.load("model/vectorizer.pkl")
+BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
+model      = joblib.load(os.path.join(BASE_DIR, "model", "model.pkl"))
+vectorizer = joblib.load(os.path.join(BASE_DIR, "model", "vectorizer.pkl"))
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
