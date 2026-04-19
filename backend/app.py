@@ -14,18 +14,18 @@ from pymongo import MongoClient
 from bson import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
 
-# ── Tesseract path (Windows) ─────────────────────────────────────────────────
+# Tesseract path (Windows only — ignored on Linux/Render)
 try:
     import pytesseract
     pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 except ImportError:
     pass
 
-# ── App ───────────────────────────────────────────────────────────────────────
+# App
 app = Flask(__name__)
 CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173", os.getenv("FRONTEND_URL", "*")])
 
-# ── JWT Config ────────────────────────────────────────────────────────────────
+# JWT
 JWT_SECRET  = os.getenv("JWT_SECRET", "sentimentai_jwt_secret_2024")
 JWT_EXPIRES = timedelta(hours=48)
 
@@ -34,7 +34,6 @@ def make_token(email):
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
 def verify_token():
-    """Returns email from token or None. Does NOT block guest access."""
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
         return None
@@ -46,25 +45,30 @@ def verify_token():
     except Exception:
         return None
 
-# ── MongoDB Atlas (TLS fixed) ─────────────────────────────────────────────────
+# MongoDB Atlas
 MONGO_URI = os.getenv(
     "MONGO_URI",
     "mongodb+srv://karpepranav7_db_user:JsvEebEqnbkQYuzQ@cluster0.y3oeaso.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 )
-if not MONGO_URI:
-    raise RuntimeError("MONGO_URI environment variable is not set")
 
-client = MongoClient(MONGO_URI, tls=True, tlsCAFile=certifi.where())
+client = MongoClient(
+    MONGO_URI,
+    tls=True,
+    tlsCAFile=certifi.where(),
+    serverSelectionTimeoutMS=10000,
+    connectTimeoutMS=10000,
+    socketTimeoutMS=10000
+)
 db         = client["sentimentDB"]
 users      = db["users"]
 collection = db["history"]
 
-# ── ML Model ──────────────────────────────────────────────────────────────────
+# ML Model — absolute paths so Render can find them
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 model      = joblib.load(os.path.join(BASE_DIR, "model", "model.pkl"))
 vectorizer = joblib.load(os.path.join(BASE_DIR, "model", "vectorizer.pkl"))
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# Helpers
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 def ok(data, code=200):
@@ -74,12 +78,12 @@ def err(msg, code=400):
     return jsonify({"error": msg}), code
 
 def safe_hash_check(stored, password):
-    """Handle both str and bytes stored passwords safely."""
     if isinstance(stored, bytes):
         stored = stored.decode("utf-8")
     return check_password_hash(stored, password)
 
-# ── Auth Routes ───────────────────────────────────────────────────────────────
+
+# Auth Routes
 
 @app.route("/signup", methods=["POST"])
 def signup():
@@ -100,7 +104,7 @@ def signup():
     users.insert_one({
         "name":       name,
         "email":      email,
-        "password":   generate_password_hash(password),  # always str, never bytes
+        "password":   generate_password_hash(password),
         "created_at": datetime.now(timezone.utc)
     })
     return ok({"message": "Account created successfully"}, 201)
@@ -146,14 +150,12 @@ def forgot_password():
     return ok({"message": "Password reset successful"})
 
 
-# ── Sentiment Routes ──────────────────────────────────────────────────────────
+# Sentiment Routes
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    data  = request.get_json(force=True, silent=True) or {}
-    text  = data.get("text", "").strip()
-
-    # JWT email takes priority; fall back to body email for guests
+    data      = request.get_json(force=True, silent=True) or {}
+    text      = data.get("text", "").strip()
     jwt_email = verify_token()
     if jwt_email == "__expired__":
         return err("Session expired. Please log in again.", 401)
@@ -217,7 +219,7 @@ def delete_history(id):
         return err("Invalid ID")
 
 
-# ── Utility ───────────────────────────────────────────────────────────────────
+# Utility
 
 @app.route("/")
 def home():
@@ -230,7 +232,7 @@ def reset_users():
     return ok({"message": f"Deleted {result.deleted_count} users. Please signup again."})
 
 
-# ── File Upload ──────────────────────────────────────────────────────────────
+# File Upload
 
 @app.route("/analyze-file", methods=["POST"])
 def analyze_file():
@@ -245,7 +247,7 @@ def analyze_file():
             text = f.read().decode("utf-8").strip()
 
         elif name.endswith(".pdf"):
-            import fitz  # pymupdf
+            import fitz
             doc  = fitz.open(stream=f.read(), filetype="pdf")
             text = " ".join(page.get_text() for page in doc).strip()
 
@@ -285,7 +287,7 @@ def analyze_file():
     return ok({"sentiment": sentiment, "confidence": confidence, "text": text[:300]})
 
 
-# ── PDF Export ────────────────────────────────────────────────────────────────
+# PDF Export
 
 @app.route("/export-report", methods=["POST"])
 def export_report():
@@ -309,21 +311,14 @@ def export_report():
     styles = getSampleStyleSheet()
     story  = []
 
-    # Title
     story.append(Paragraph("SentimentAI — Analysis Report", ParagraphStyle("title", fontSize=20, fontName="Helvetica-Bold", textColor=colors.HexColor("#f97316"), spaceAfter=6)))
     story.append(Paragraph(f"Generated: {datetime.now(timezone.utc).strftime('%d %b %Y, %I:%M %p UTC')}", ParagraphStyle("sub", fontSize=9, textColor=colors.grey, spaceAfter=20)))
-
-    # Result
     story.append(Paragraph("Sentiment Result", ParagraphStyle("h2", fontSize=13, fontName="Helvetica-Bold", spaceAfter=8)))
-    result_color = colors.HexColor("#22c55e") if sentiment == "Positive" else colors.HexColor("#ef4444")
     story.append(Paragraph(f"<font color='#{('22c55e' if sentiment == 'Positive' else 'ef4444')}'>{sentiment}</font>  —  {int(confidence*100)}% confident",
         ParagraphStyle("result", fontSize=14, fontName="Helvetica-Bold", spaceAfter=16)))
-
-    # Input text
     story.append(Paragraph("Analyzed Text", ParagraphStyle("h2", fontSize=13, fontName="Helvetica-Bold", spaceAfter=8)))
     story.append(Paragraph(text[:1000], ParagraphStyle("body", fontSize=10, leading=14, spaceAfter=20)))
 
-    # History summary table
     if pos + neg > 0:
         story.append(Paragraph("Session Summary", ParagraphStyle("h2", fontSize=13, fontName="Helvetica-Bold", spaceAfter=8)))
         table = Table([["Sentiment", "Count", "Percentage"],

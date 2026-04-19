@@ -23,9 +23,7 @@ __pycache__/
 # =========================
 # MACHINE LEARNING FILES
 # =========================
-model.pkl
-vectorizer.pkl
-backend/model/
+# model.pkl and vectorizer.pkl are intentionally tracked in git for deployment
 
 # =========================
 # DATASETS
