@@ -50,7 +50,7 @@ def verify_token():
 # ── MongoDB Atlas (TLS fixed) ─────────────────────────────────────────────────
 MONGO_URI = os.getenv(
     "MONGO_URI",
-    "mongodb+srv://karpepranav7_db_user:admin123@cluster0.y3oeaso.mongodb.net/?retryWrites=true&w=majority"
+    "mongodb+srv://karpepranav7_db_user:JsvEebEqnbkQYuzQ@cluster0.y3oeaso.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 )
 if not MONGO_URI:
     raise RuntimeError("MONGO_URI environment variable is not set")
