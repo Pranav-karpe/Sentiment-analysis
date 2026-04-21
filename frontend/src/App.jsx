@@ -84,7 +84,7 @@ function LoginPage({ dark, setDark }) {
       <Login
         onNavigate={(p) => navigate("/" + p)}
         onLoginSuccess={handleLoginSuccess}
-        onGuest={() => navigate("/dashboard")}
+        onGuest={() => navigate("/guest")}
         dark={dark}
         setDark={setDark}
       />
@@ -155,6 +155,7 @@ export default function App() {
           <Route path="/terms"    element={<Terms />} />
           <Route path="/about"    element={<AboutPage />} />
           <Route path="/contact"  element={<ContactPage />} />
+          <Route path="/guest"    element={<Dashboard dark={dark} setDark={setDark} />} />
           <Route path="/dashboard" element={
             <RequireAuth>
               <Dashboard dark={dark} setDark={setDark} />

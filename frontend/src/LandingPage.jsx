@@ -134,7 +134,7 @@ export default function LandingPage({ dark }) {
     <div className="w-full text-gray-900 dark:text-white">
 
       {/* ── PROBLEM ─────────────────────────────────────────────────────────── */}
-      <section className="py-24 px-4">
+      <section className="py-14 px-4">
         <div className="max-w-4xl mx-auto text-center">
           <Reveal>
             <SectionLabel>The Problem</SectionLabel>
@@ -152,9 +152,9 @@ export default function LandingPage({ dark }) {
       <Divider />
 
       {/* ── WHY MANUAL FAILS ────────────────────────────────────────────────── */}
-      <section className="py-24 px-4">
+      <section className="py-14 px-4">
         <div className="max-w-4xl mx-auto">
-          <Reveal className="text-center mb-12">
+          <Reveal className="text-center mb-8">
             <SectionLabel>Why Manual Analysis Fails</SectionLabel>
             <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
               Reading feedback manually doesn't scale
@@ -186,9 +186,9 @@ export default function LandingPage({ dark }) {
       <Divider />
 
       {/* ── SYSTEMATIC APPROACH ─────────────────────────────────────────────── */}
-      <section className="py-24 px-4">
+      <section className="py-14 px-4">
         <div className="max-w-4xl mx-auto">
-          <Reveal className="text-center mb-12">
+          <Reveal className="text-center mb-8">
             <SectionLabel>The AI Solution</SectionLabel>
             <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">
               A systematic approach to understanding text
@@ -218,9 +218,9 @@ export default function LandingPage({ dark }) {
       <Divider />
 
       {/* ── USE CASES ───────────────────────────────────────────────────────── */}
-      <section className="py-24 px-4">
+      <section className="py-14 px-4">
         <div className="max-w-4xl mx-auto">
-          <Reveal className="text-center mb-12">
+          <Reveal className="text-center mb-8">
             <SectionLabel>Use Cases</SectionLabel>
             <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
               Works for every type of feedback
@@ -243,9 +243,9 @@ export default function LandingPage({ dark }) {
       <Divider />
 
       {/* ── REAL WORLD EXAMPLES ─────────────────────────────────────────────── */}
-      <section className="py-24 px-4">
+      <section className="py-14 px-4">
         <div className="max-w-4xl mx-auto">
-          <Reveal className="text-center mb-12">
+          <Reveal className="text-center mb-8">
             <SectionLabel>Real World Examples</SectionLabel>
             <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
               Who benefits from sentiment analysis?
@@ -270,7 +270,7 @@ export default function LandingPage({ dark }) {
       <Divider />
 
       {/* ── PRACTICAL IMPACT ────────────────────────────────────────────────── */}
-      <section className="py-24 px-4">
+      <section className="py-14 px-4">
         <div className="max-w-4xl mx-auto">
           <Reveal className="text-center mb-10">
             <SectionLabel>Practical Impact</SectionLabel>
@@ -306,9 +306,9 @@ export default function LandingPage({ dark }) {
       <Divider />
 
       {/* ── GETTING STARTED ─────────────────────────────────────────────────── */}
-      <section className="py-24 px-4">
+      <section className="py-14 px-4">
         <div className="max-w-4xl mx-auto">
-          <Reveal className="text-center mb-12">
+          <Reveal className="text-center mb-8">
             <SectionLabel>Getting Started</SectionLabel>
             <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
               Up and running in seconds
@@ -338,7 +338,7 @@ export default function LandingPage({ dark }) {
       <Divider />
 
       {/* ── FAQ ─────────────────────────────────────────────────────────────── */}
-      <section className="py-24 px-4">
+      <section className="py-14 px-4">
         <div className="max-w-2xl mx-auto">
           <Reveal className="text-center mb-10">
             <SectionLabel>FAQ</SectionLabel>
@@ -359,7 +359,7 @@ export default function LandingPage({ dark }) {
       <Divider />
 
       {/* ── CTA ─────────────────────────────────────────────────────────────── */}
-      <section className="py-24 px-4">
+      <section className="py-14 px-4">
         <div className="max-w-2xl mx-auto text-center">
           <Reveal>
             <div className="glass-card rounded-3xl p-10 card-hover">
@@ -394,8 +394,8 @@ export default function LandingPage({ dark }) {
 
       {/* ── FOOTER ──────────────────────────────────────────────────────────── */}
       <footer className="border-t border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/[0.02]">
-        <div className="max-w-4xl mx-auto px-4 py-12">
-          <div className="grid sm:grid-cols-3 gap-10 mb-10">
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <div className="grid sm:grid-cols-3 gap-6 mb-8">
 
             {/* Brand */}
             <div>

@@ -169,15 +169,15 @@ export default function AnalyticsDashboard({ dark, setDark }) {
       </header>
 
       {/* MAIN */}
-      <main className="px-4 pt-32 pb-24 max-w-5xl mx-auto">
+      <main className="px-4 pt-24 pb-16 max-w-5xl mx-auto">
 
         {/* PAGE TITLE */}
-        <div className="mb-8">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-500/20 mb-4">
+        <div className="mb-6">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-500/20 mb-3">
             <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
             Analytics Overview
           </div>
-          <h1 className="text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white">Dashboard</h1>
+          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Dashboard</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Your sentiment analysis history and statistics</p>
         </div>
 
@@ -200,42 +200,36 @@ export default function AnalyticsDashboard({ dark, setDark }) {
         ) : (
           <>
             {/* SECTION 1 — STAT CARDS */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
               {/* Total */}
-              <div className="rounded-2xl glass-card px-5 py-5 text-left">
-                <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-2">Total</p>
-                <p className="text-4xl font-extrabold text-gray-900 dark:text-white">{total}</p>
-                <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">analyses</p>
+              <div className="rounded-2xl glass-card px-4 py-4 text-left">
+                <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-1">Total</p>
+                <p className="text-3xl font-extrabold text-gray-900 dark:text-white">{total}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-600 mt-0.5">analyses</p>
               </div>
               {/* Positive */}
-              <div className="rounded-2xl glass-card px-5 py-5 text-left">
-                <p className="text-xs font-semibold uppercase tracking-widest text-green-600 dark:text-green-400 mb-2">Positive</p>
-                <p className="text-4xl font-extrabold text-green-600 dark:text-green-400">{pos}</p>
-                <p className="text-xs text-green-500 dark:text-green-500/70 mt-1">
-                  {total > 0 ? Math.round((pos / total) * 100) : 0}% of total
-                </p>
+              <div className="rounded-2xl glass-card px-4 py-4 text-left">
+                <p className="text-xs font-semibold uppercase tracking-widest text-green-600 dark:text-green-400 mb-1">Positive</p>
+                <p className="text-3xl font-extrabold text-green-600 dark:text-green-400">{pos}</p>
+                <p className="text-xs text-green-500 dark:text-green-500/70 mt-0.5">{total > 0 ? Math.round((pos / total) * 100) : 0}%</p>
               </div>
               {/* Negative */}
-              <div className="rounded-2xl glass-card px-5 py-5 text-left">
-                <p className="text-xs font-semibold uppercase tracking-widest text-red-600 dark:text-red-400 mb-2">Negative</p>
-                <p className="text-4xl font-extrabold text-red-600 dark:text-red-400">{neg}</p>
-                <p className="text-xs text-red-500 dark:text-red-500/70 mt-1">
-                  {total > 0 ? Math.round((neg / total) * 100) : 0}% of total
-                </p>
+              <div className="rounded-2xl glass-card px-4 py-4 text-left">
+                <p className="text-xs font-semibold uppercase tracking-widest text-red-600 dark:text-red-400 mb-1">Negative</p>
+                <p className="text-3xl font-extrabold text-red-600 dark:text-red-400">{neg}</p>
+                <p className="text-xs text-red-500 dark:text-red-500/70 mt-0.5">{total > 0 ? Math.round((neg / total) * 100) : 0}%</p>
               </div>
               {/* Neutral */}
-              <div className="rounded-2xl glass-card px-5 py-5 text-left">
-                <p className="text-xs font-semibold uppercase tracking-widest text-yellow-600 dark:text-yellow-400 mb-2">Neutral</p>
-                <p className="text-4xl font-extrabold text-yellow-600 dark:text-yellow-400">{neutral}</p>
-                <p className="text-xs text-yellow-500 dark:text-yellow-500/70 mt-1">
-                  {total > 0 ? Math.round((neutral / total) * 100) : 0}% of total
-                </p>
+              <div className="rounded-2xl glass-card px-4 py-4 text-left">
+                <p className="text-xs font-semibold uppercase tracking-widest text-yellow-600 dark:text-yellow-400 mb-1">Neutral</p>
+                <p className="text-3xl font-extrabold text-yellow-600 dark:text-yellow-400">{neutral}</p>
+                <p className="text-xs text-yellow-500 dark:text-yellow-500/70 mt-0.5">{total > 0 ? Math.round((neutral / total) * 100) : 0}%</p>
               </div>
             </div>
 
             {/* Percentage bar */}
             {total > 0 && (
-              <div className="rounded-xl overflow-hidden h-2 flex mb-8">
+              <div className="rounded-xl overflow-hidden h-1.5 flex mb-6">
                 <div className="bg-green-500 transition-all duration-500" style={{ width: `${Math.round((pos / total) * 100)}%` }} />
                 <div className="bg-red-500 transition-all duration-500" style={{ width: `${Math.round((neg / total) * 100)}%` }} />
                 {neutral > 0 && <div className="bg-yellow-400 transition-all duration-500" style={{ width: `${Math.round((neutral / total) * 100)}%` }} />}
@@ -243,58 +237,59 @@ export default function AnalyticsDashboard({ dark, setDark }) {
             )}
 
             {/* SECTION 2 — CHARTS GRID */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
 
-              {/* Pie chart — existing, untouched */}
+              {/* Pie chart */}
               <div className="rounded-2xl glass-card overflow-hidden">
-                <div className="px-6 pt-5 pb-1 flex items-center justify-between">
-                  <h2 className="text-lg font-bold text-gray-900 dark:text-white">Sentiment Split</h2>
+                <div className="px-5 pt-4 pb-1 flex items-center justify-between">
+                  <h2 className="text-base font-bold text-gray-900 dark:text-white">Sentiment Split</h2>
                   <div className="flex items-center gap-3 text-xs font-medium">
                     <span className="flex items-center gap-1.5 text-green-500"><span className="w-2 h-2 rounded-full bg-green-500" />{pos}</span>
                     <span className="flex items-center gap-1.5 text-red-500"><span className="w-2 h-2 rounded-full bg-red-500" />{neg}</span>
                     {neutral > 0 && <span className="flex items-center gap-1.5 text-yellow-500"><span className="w-2 h-2 rounded-full bg-yellow-400" />{neutral}</span>}
                   </div>
                 </div>
-                <ResponsiveContainer width="100%" height={240}>
-                  <PieChart>
-                    <Pie data={chartData} cx="50%" cy="50%" innerRadius={65} outerRadius={95} paddingAngle={4} dataKey="value">
-                      <Cell fill="#22c55e" stroke="transparent" />
-                      <Cell fill="#ef4444" stroke="transparent" />
-                      {neutral > 0 && <Cell fill="#eab308" stroke="transparent" />}
-                    </Pie>
-                    <Tooltip contentStyle={{ background: dark ? "#1a1a1a" : "#fff", border: dark ? "1px solid rgba(255,255,255,0.1)" : "1px solid #e5e7eb", borderRadius: "12px", color: dark ? "#fff" : "#111", fontSize: "13px" }} formatter={(v, n) => [`${v} entries`, n]} />
-                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "13px", color: dark ? "#9ca3af" : "#6b7280" }} />
-                  </PieChart>
-                </ResponsiveContainer>
+                <div className="w-full overflow-x-auto">
+                  <ResponsiveContainer width="100%" height={200}>
+                    <PieChart>
+                      <Pie data={chartData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={4} dataKey="value">
+                        <Cell fill="#22c55e" stroke="transparent" />
+                        <Cell fill="#ef4444" stroke="transparent" />
+                        {neutral > 0 && <Cell fill="#eab308" stroke="transparent" />}
+                      </Pie>
+                      <Tooltip contentStyle={{ background: dark ? "#1a1a1a" : "#fff", border: dark ? "1px solid rgba(255,255,255,0.1)" : "1px solid #e5e7eb", borderRadius: "12px", color: dark ? "#fff" : "#111", fontSize: "12px" }} formatter={(v, n) => [`${v} entries`, n]} />
+                      <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: "12px", color: dark ? "#9ca3af" : "#6b7280" }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
 
-              {/* Bar chart — sentiment trend over time */}
+              {/* Bar chart */}
               <div className="rounded-2xl glass-card overflow-hidden">
-                <div className="px-6 pt-5 pb-1">
-                  <h2 className="text-lg font-bold text-gray-900 dark:text-white">Sentiment Trend</h2>
+                <div className="px-5 pt-4 pb-1">
+                  <h2 className="text-base font-bold text-gray-900 dark:text-white">Sentiment Trend</h2>
                   <p className="text-xs text-gray-400 dark:text-gray-600 mt-0.5">Analyses per day</p>
                 </div>
                 {trendData.length < 2 ? (
-                  <div className="flex flex-col items-center justify-center h-[200px] text-center px-6">
-                    <span className="text-3xl mb-2">📈</span>
-                    <p className="text-sm text-gray-400 dark:text-gray-600">Analyze on multiple days to see your trend</p>
+                  <div className="flex flex-col items-center justify-center h-[160px] text-center px-6">
+                    <span className="text-2xl mb-2">📈</span>
+                    <p className="text-xs text-gray-400 dark:text-gray-600">Analyze on multiple days to see your trend</p>
                   </div>
                 ) : (
-                  <ResponsiveContainer width="100%" height={240}>
-                    <BarChart data={trendData} margin={{ top: 16, right: 20, left: -10, bottom: 4 }} barCategoryGap="30%">
-                      <CartesianGrid strokeDasharray="3 3" stroke={dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} vertical={false} />
-                      <XAxis dataKey="date" tick={{ fontSize: 11, fill: dark ? "#6b7280" : "#9ca3af" }} axisLine={false} tickLine={false} />
-                      <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: dark ? "#6b7280" : "#9ca3af" }} axisLine={false} tickLine={false} />
-                      <Tooltip
-                        contentStyle={{ background: dark ? "#1a1a1a" : "#fff", border: dark ? "1px solid rgba(255,255,255,0.1)" : "1px solid #e5e7eb", borderRadius: "12px", color: dark ? "#fff" : "#111", fontSize: "13px" }}
-                        cursor={{ fill: dark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)" }}
-                      />
-                      <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "13px", color: dark ? "#9ca3af" : "#6b7280", paddingTop: "8px" }} />
-                      <Bar dataKey="Positive" fill="#22c55e" radius={[4, 4, 0, 0]} maxBarSize={32} />
-                      <Bar dataKey="Negative" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={32} />
-                      {neutral > 0 && <Bar dataKey="Neutral" fill="#eab308" radius={[4, 4, 0, 0]} maxBarSize={32} />}
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <div className="w-full overflow-x-auto">
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={trendData} margin={{ top: 12, right: 16, left: -16, bottom: 4 }} barCategoryGap="30%">
+                        <CartesianGrid strokeDasharray="3 3" stroke={dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)"} vertical={false} />
+                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: dark ? "#6b7280" : "#9ca3af" }} axisLine={false} tickLine={false} />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: dark ? "#6b7280" : "#9ca3af" }} axisLine={false} tickLine={false} />
+                        <Tooltip contentStyle={{ background: dark ? "#1a1a1a" : "#fff", border: dark ? "1px solid rgba(255,255,255,0.1)" : "1px solid #e5e7eb", borderRadius: "12px", color: dark ? "#fff" : "#111", fontSize: "12px" }} cursor={{ fill: dark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)" }} />
+                        <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: "12px", color: dark ? "#9ca3af" : "#6b7280", paddingTop: "6px" }} />
+                        <Bar dataKey="Positive" fill="#22c55e" radius={[3, 3, 0, 0]} maxBarSize={28} />
+                        <Bar dataKey="Negative" fill="#ef4444" radius={[3, 3, 0, 0]} maxBarSize={28} />
+                        {neutral > 0 && <Bar dataKey="Neutral" fill="#eab308" radius={[3, 3, 0, 0]} maxBarSize={28} />}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 )}
               </div>
 

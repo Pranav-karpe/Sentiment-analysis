@@ -141,28 +141,28 @@ export default function Dashboard({ dark, setDark }) {
       {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
 
       {/* NAVBAR */}
-      <header className="fixed top-0 inset-x-0 z-50 flex justify-center pt-4 px-4">
+      <header className="fixed top-0 inset-x-0 z-50 flex justify-center pt-14 px-4 relative">
         <nav className="w-full max-w-4xl flex items-center justify-between px-6 py-3 rounded-2xl glass-nav">
           <button onClick={() => navigate("/dashboard")} className="flex items-center gap-2 font-bold text-xl tracking-tight select-none group">
             <span className="w-7 h-7 rounded-lg bg-orange-500 flex items-center justify-center text-white text-sm font-black logo-icon-glow">S</span>
             <span className="logo-name-glow">Sentiment<span className="text-orange-500">AI</span></span>
           </button>
           <div className="hidden sm:flex items-center gap-6 text-sm font-medium text-gray-500 dark:text-gray-400">
-            <button onClick={() => navigate("/analytics")} className="hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1.5">
+            <button onClick={() => navigate("/analytics")} className="nav-link-glow hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1.5">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
               Dashboard
             </button>
-            <button onClick={() => setShowSupport(true)} className="hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1.5">
+            <button onClick={() => setShowSupport(true)} className="nav-link-glow hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1.5">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
               Support
             </button>
-            <button onClick={() => setShowAbout(true)} className="hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1.5">
+            <button onClick={() => setShowAbout(true)} className="nav-link-glow hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1.5">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               About
             </button>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setDark(!dark)} className="w-9 h-9 rounded-xl flex items-center justify-center text-base bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 transition-colors">
+            <button onClick={() => setDark(!dark)} className="theme-toggle-glow w-9 h-9 rounded-xl flex items-center justify-center text-base bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 transition-colors">
               {dark ? "☀️" : "🌙"}
             </button>
             {/* Mobile hamburger */}
@@ -188,7 +188,7 @@ export default function Dashboard({ dark, setDark }) {
         </nav>
         {/* Mobile dropdown menu */}
         {mobileMenu && (
-          <div className="sm:hidden w-full max-w-4xl mt-2 glass-card rounded-2xl px-4 py-3 flex flex-col gap-1">
+          <div className="absolute top-full left-4 right-4 mt-2 sm:hidden glass-card rounded-2xl px-4 py-3 flex flex-col gap-1 z-50 shadow-xl">
             {[
               { label: "Dashboard", action: () => { navigate("/analytics"); setMobileMenu(false); } },
               { label: "Support",   action: () => { setShowSupport(true); setMobileMenu(false); } },
@@ -199,28 +199,34 @@ export default function Dashboard({ dark, setDark }) {
                 {label}
               </button>
             ))}
-            {user && <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-600 border-t border-gray-100 dark:border-white/5 mt-1">👋 {user.name}</p>}
+            {user
+              ? <button onClick={() => { handleLogout(); setMobileMenu(false); }} className="text-left px-3 py-2.5 rounded-xl text-sm font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors mt-1 border-t border-gray-100 dark:border-white/5 pt-2">Log out</button>
+              : <>
+                  <button onClick={() => { navigate("/login"); setMobileMenu(false); }} className="text-left px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">Log in</button>
+                  <button onClick={() => { navigate("/signup"); setMobileMenu(false); }} className="text-left px-3 py-2.5 rounded-xl text-sm font-semibold text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-500/10 transition-colors">Sign up</button>
+                </>
+            }
           </div>
         )}
       </header>
 
       {/* MAIN */}
-      <main className="flex flex-col items-center text-center px-4 pt-36 pb-24">
+      <main className="flex flex-col items-center text-center px-4 pt-24 pb-16 relative">
 
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-500/20 mb-8 badge-float">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-500/20 mb-4 badge-float">
           <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
           AI-Powered · Real-time Analysis
         </div>
 
-        <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.1] mb-6 max-w-3xl hero-heading">
+        <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.1] mb-4 max-w-3xl hero-heading">
           Understand the <span className="sentiment-word">sentiment</span><br />behind any text
         </h1>
 
-        <p className="text-lg text-gray-500 dark:text-gray-400 max-w-xl leading-relaxed mb-10">
+        <p className="text-lg text-gray-500 dark:text-gray-400 max-w-xl leading-relaxed mb-6">
           Paste any text and instantly detect whether it's positive, negative, or neutral — powered by a machine learning model trained on millions of tweets.
         </p>
 
-        <div className="flex flex-wrap justify-center gap-3 mb-12">
+        <div className="flex flex-wrap justify-center gap-3 mb-6">
           {["✦ Free to use", "✦ No signup needed", "✦ Instant results", "✦ ML-powered"].map((f) => (
             <span key={f} className="feature-pill px-4 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-white/10">{f}</span>
           ))}
