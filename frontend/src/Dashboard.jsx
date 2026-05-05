@@ -288,7 +288,7 @@ export default function Dashboard({ dark, setDark }) {
         )}
 
         {/* RESULT */}
-        {result && !result.batch && (
+        {result && !result.batch && !result.multiple && (
           <div className="mt-5 w-full max-w-2xl rounded-2xl glass-card overflow-hidden result-reveal card-hover">
             <div className="px-6 py-5 flex items-center justify-between">
               <div className="text-left">
@@ -334,7 +334,7 @@ export default function Dashboard({ dark, setDark }) {
         )}
 
         {/* BATCH RESULTS */}
-        {result?.batch && (
+        {(result?.batch || result?.multiple) && (
           <div className="mt-5 w-full max-w-2xl result-reveal">
             {/* Summary bar */}
             <div className="glass-card rounded-2xl px-6 py-4 mb-3 flex items-center justify-between">

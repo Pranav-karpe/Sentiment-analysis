@@ -245,6 +245,7 @@ def predict():
             "sentiment":  overall,
             "confidence": avg_conf,
             "batch":      True,
+            "multiple":   True,
             "results":    results,
             "summary":    {"positive": pos, "negative": neg, "neutral": neu, "total": len(results)}
         })
