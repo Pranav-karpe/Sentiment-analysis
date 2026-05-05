@@ -31,7 +31,8 @@ export default function Dashboard({ dark, setDark }) {
     try {
       const res = await axios.post(`${API}/predict`,
         { text, email: user?.email ?? "" }, authHeaders());
-      setResult({ sentiment: res.data.sentiment, confidence: res.data.confidence });
+      // Store full response — batch or single
+      setResult(res.data);
     } catch (e) {
       if (e.response?.data?.error === "Session expired. Please log in again.") { handleLogout(); return; }
       setError(e.response?.data?.error || "Server error. Make sure Flask is running.");
@@ -248,7 +249,7 @@ export default function Dashboard({ dark, setDark }) {
               onKeyDown={handleKey}
               onFocus={() => setTaFocused(true)}
               onBlur={() => setTaFocused(false)}
-              placeholder="Type or paste your text here... (Ctrl+Enter to analyze)"
+              placeholder="One tweet per line for batch analysis, or paste a single text... (Ctrl+Enter to analyze)"
               rows={3}
               style={{ minHeight: "72px", maxHeight: "300px" }}
               className={`w-full bg-transparent outline-none resize-none text-base leading-relaxed text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 transition-all duration-200 rounded-lg textarea-glow${taFocused ? " textarea-focused" : ""}`}
@@ -287,7 +288,7 @@ export default function Dashboard({ dark, setDark }) {
         )}
 
         {/* RESULT */}
-        {result && (
+        {result && !result.batch && (
           <div className="mt-5 w-full max-w-2xl rounded-2xl glass-card overflow-hidden result-reveal card-hover">
             <div className="px-6 py-5 flex items-center justify-between">
               <div className="text-left">
@@ -310,7 +311,7 @@ export default function Dashboard({ dark, setDark }) {
               </div>
             </div>
             <div className="px-6 py-3 border-t border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/[0.02] flex items-center justify-between">
-              <p className="text-xs text-gray-400 dark:text-gray-500">Analyzed {text.length} characters · Logistic Regression + TF-IDF</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Analyzed {text.length} characters · LinearSVC + TF-IDF</p>
               <div className="flex items-center gap-3">
                 <button onClick={copyResult} className="flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 transition-colors">
                   {copied
@@ -328,6 +329,47 @@ export default function Dashboard({ dark, setDark }) {
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* BATCH RESULTS */}
+        {result?.batch && (
+          <div className="mt-5 w-full max-w-2xl result-reveal">
+            {/* Summary bar */}
+            <div className="glass-card rounded-2xl px-6 py-4 mb-3 flex items-center justify-between">
+              <div className="text-left">
+                <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-1">Batch Summary · {result.summary.total} tweets</p>
+                <p className={`text-2xl font-extrabold tracking-tight ${
+                  result.sentiment === "Positive" ? "text-green-500" : result.sentiment === "Negative" ? "text-red-500" : "text-yellow-500"
+                }`}>
+                  {result.sentiment === "Positive" ? "😊" : result.sentiment === "Negative" ? "😞" : "😐"} Overall: {result.sentiment}
+                </p>
+              </div>
+              <div className="flex items-center gap-3 text-xs font-semibold">
+                <span className="text-green-500">{result.summary.positive} pos</span>
+                <span className="text-red-500">{result.summary.negative} neg</span>
+                {result.summary.neutral > 0 && <span className="text-yellow-500">{result.summary.neutral} neu</span>}
+              </div>
+            </div>
+            {/* Per-tweet rows */}
+            <div className="flex flex-col gap-2">
+              {result.results.map((r, i) => (
+                <div key={i} className="glass-card rounded-xl px-5 py-3 flex items-center justify-between gap-4">
+                  <p className="text-sm text-gray-600 dark:text-gray-400 text-left line-clamp-1 flex-1">
+                    <span className="text-xs text-gray-400 dark:text-gray-600 font-mono mr-2">#{i + 1}</span>
+                    {r.text}
+                  </p>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`text-xs font-semibold ${
+                      r.sentiment === "Positive" ? "text-green-500" : r.sentiment === "Negative" ? "text-red-500" : "text-yellow-500"
+                    }`}>
+                      {r.sentiment === "Positive" ? "😊" : r.sentiment === "Negative" ? "😞" : "😐"} {r.sentiment}
+                    </span>
+                    <span className="text-xs text-gray-400 dark:text-gray-600">{Math.round(r.confidence * 100)}%</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}

@@ -68,6 +68,60 @@ BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 model      = joblib.load(os.path.join(BASE_DIR, "model", "model.pkl"))
 vectorizer = joblib.load(os.path.join(BASE_DIR, "model", "vectorizer.pkl"))
 
+# ── Improved prediction helpers ────────────────────────────────────────────────────────────────
+
+NEGATION_RE = re.compile(
+    r"\b(not|no|never|neither|nor|cannot|can't|won't|don't|doesn't|didn't|isn't|wasn't|aren't|weren't|haven't|hasn't|hadn't|shouldn't|wouldn't|couldn't)\s+(\w+)",
+    re.IGNORECASE
+)
+
+# Sarcasm / irony signal phrases — presence biases toward Negative
+SARCASM_SIGNALS = [
+    "yeah right", "oh great", "oh fantastic", "just love", "just loved",
+    "so much fun", "best day ever", "best way", "oh wonderful", "oh perfect",
+    "totally fine", "absolutely love", "love waiting", "love being",
+    "thanks a lot", "thanks so much", "great job", "well done",
+    "oh sure", "of course", "obviously", "clearly", "as if",
+]
+
+NEUTRAL_THRESHOLD = 0.62   # below this confidence → Neutral
+SARCASM_PENALTY   = 0.15   # subtract from positive probability when sarcasm detected
+
+def preprocess(text):
+    """Match training-time preprocessing exactly."""
+    text = str(text).lower()
+    text = re.sub(r"n't", " not", text)
+    text = re.sub(r"'re", " are", text)
+    text = re.sub(r"'ve", " have", text)
+    text = re.sub(r"'ll", " will", text)
+    text = re.sub(r"'d",  " would", text)
+    text = re.sub(r"http\S+", "", text)
+    text = re.sub(r"@\w+", "", text)
+    text = NEGATION_RE.sub(lambda m: m.group(1) + "_" + m.group(2), text)
+    text = re.sub(r"[^a-z\s_]", "", text)
+    return text.strip()
+
+def run_sentiment(raw_text):
+    """Returns (sentiment, confidence) with sarcasm detection and neutral threshold."""
+    cleaned   = preprocess(raw_text)
+    vec       = vectorizer.transform([cleaned])
+    proba     = model.predict_proba(vec)[0]   # [neg_prob, pos_prob]
+    neg_p, pos_p = float(proba[0]), float(proba[1])
+
+    # Sarcasm signal check on original lowercased text
+    lower = raw_text.lower()
+    sarcasm_hit = any(sig in lower for sig in SARCASM_SIGNALS)
+    if sarcasm_hit:
+        pos_p = max(0.0, pos_p - SARCASM_PENALTY)
+        neg_p = min(1.0, neg_p + SARCASM_PENALTY)
+
+    confidence = round(max(pos_p, neg_p), 2)
+
+    if confidence < NEUTRAL_THRESHOLD:
+        return "Neutral", confidence
+    sentiment = "Positive" if pos_p > neg_p else "Negative"
+    return sentiment, confidence
+
 # Helpers
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -164,12 +218,39 @@ def predict():
     if not text:
         return err("Text cannot be empty")
 
-    vector     = vectorizer.transform([text])
-    prediction = model.predict(vector)[0]
-    proba      = model.predict_proba(vector)[0]
-    confidence = round(float(max(proba)), 2)
-    sentiment  = "Positive" if prediction == 1 else "Negative"
+    # ── Multi-line detection: split by newlines, analyze each line separately ──
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
 
+    if len(lines) > 1:
+        # Batch mode — analyze each line individually
+        results = []
+        for line in lines:
+            s, c = run_sentiment(line)
+            results.append({"text": line, "sentiment": s, "confidence": c})
+            if email:
+                collection.insert_one({
+                    "user_email": email,
+                    "text":       line,
+                    "sentiment":  s,
+                    "confidence": c,
+                    "created_at": datetime.now(timezone.utc)
+                })
+        # Overall summary: majority sentiment
+        pos = sum(1 for r in results if r["sentiment"] == "Positive")
+        neg = sum(1 for r in results if r["sentiment"] == "Negative")
+        neu = sum(1 for r in results if r["sentiment"] == "Neutral")
+        overall = max([(pos, "Positive"), (neg, "Negative"), (neu, "Neutral")], key=lambda x: x[0])[1]
+        avg_conf = round(sum(r["confidence"] for r in results) / len(results), 2)
+        return ok({
+            "sentiment":  overall,
+            "confidence": avg_conf,
+            "batch":      True,
+            "results":    results,
+            "summary":    {"positive": pos, "negative": neg, "neutral": neu, "total": len(results)}
+        })
+
+    # Single line mode (existing behaviour)
+    sentiment, confidence = run_sentiment(text)
     if email:
         collection.insert_one({
             "user_email": email,
@@ -178,7 +259,6 @@ def predict():
             "confidence": confidence,
             "created_at": datetime.now(timezone.utc)
         })
-
     return ok({"sentiment": sentiment, "confidence": confidence})
 
 
@@ -267,11 +347,7 @@ def analyze_file():
     if not text:
         return err("No text found in file")
 
-    vector     = vectorizer.transform([text])
-    prediction = model.predict(vector)[0]
-    proba      = model.predict_proba(vector)[0]
-    confidence = round(float(max(proba)), 2)
-    sentiment  = "Positive" if prediction == 1 else "Negative"
+    sentiment, confidence = run_sentiment(text)
 
     jwt_email = verify_token()
     email     = (jwt_email if jwt_email and jwt_email != "__expired__"
