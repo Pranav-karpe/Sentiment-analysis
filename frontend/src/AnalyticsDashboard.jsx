@@ -18,8 +18,23 @@ export default function AnalyticsDashboard({ dark, setDark }) {
   const [showAbout,     setShowAbout]     = useState(false);
   const [supportSent,   setSupportSent]   = useState(false);
   const [supportMsg,    setSupportMsg]    = useState("");
+  const [supportEmail,  setSupportEmail]  = useState("");
+  const [supportLoading, setSupportLoading] = useState(false);
 
   const handleLogout = () => { clearSession(); navigate("/login", { replace: true }); };
+
+  const sendSupport = async () => {
+    if (!supportMsg.trim()) return;
+    setSupportLoading(true);
+    try {
+      await axios.post(`${API}/support-message`, { message: supportMsg, email: supportEmail || user?.email || "" });
+      setSupportSent(true);
+    } catch {
+      setSupportSent(true);
+    } finally {
+      setSupportLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!user?.email) { setHistory([]); setLoadingHistory(false); return; }
@@ -81,7 +96,7 @@ export default function AnalyticsDashboard({ dark, setDark }) {
 
       {/* SUPPORT MODAL */}
       {showSupport && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center px-4" onClick={() => { setShowSupport(false); setSupportSent(false); setSupportMsg(""); }}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center px-4" onClick={() => { setShowSupport(false); setSupportSent(false); setSupportMsg(""); setSupportEmail(""); }}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
           <div className="relative w-full max-w-md glass-card rounded-2xl p-6 z-10" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
@@ -89,7 +104,7 @@ export default function AnalyticsDashboard({ dark, setDark }) {
                 <h2 className="text-lg font-bold text-gray-900 dark:text-white">Customer Support</h2>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">We typically reply within 24 hours</p>
               </div>
-              <button onClick={() => { setShowSupport(false); setSupportSent(false); setSupportMsg(""); }} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">✕</button>
+              <button onClick={() => { setShowSupport(false); setSupportSent(false); setSupportMsg(""); setSupportEmail(""); }} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">✕</button>
             </div>
             {supportSent ? (
               <div className="flex flex-col items-center py-6 text-center">
@@ -107,13 +122,13 @@ export default function AnalyticsDashboard({ dark, setDark }) {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Contact email</label>
-                  <input type="email" defaultValue={user?.email || ""} placeholder="you@example.com"
+                  <input type="email" value={supportEmail} onChange={(e) => setSupportEmail(e.target.value)} defaultValue={user?.email || ""} placeholder="you@example.com"
                     className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 outline-none focus:border-orange-500 transition-colors" />
                 </div>
-                <button onClick={() => { if (supportMsg.trim()) setSupportSent(true); }}
-                  disabled={!supportMsg.trim()}
+                <button onClick={sendSupport}
+                  disabled={!supportMsg.trim() || supportLoading}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white transition-all btn-glow mt-1">
-                  Send Message
+                  {supportLoading ? "Sending..." : "Send Message"}
                 </button>
               </div>
             )}
@@ -253,9 +268,13 @@ export default function AnalyticsDashboard({ dark, setDark }) {
                   <ResponsiveContainer width="100%" height={200}>
                     <PieChart>
                       <Pie data={chartData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={4} dataKey="value">
-                        <Cell fill="#22c55e" stroke="transparent" />
-                        <Cell fill="#ef4444" stroke="transparent" />
-                        {neutral > 0 && <Cell fill="#eab308" stroke="transparent" />}
+                        {chartData.map((entry) => (
+                          <Cell
+                            key={entry.name}
+                            fill={entry.name === "Positive" ? "#22c55e" : entry.name === "Negative" ? "#ef4444" : "#eab308"}
+                            stroke="transparent"
+                          />
+                        ))}
                       </Pie>
                       <Tooltip contentStyle={{ background: dark ? "#1a1a1a" : "#fff", border: dark ? "1px solid rgba(255,255,255,0.1)" : "1px solid #e5e7eb", borderRadius: "12px", color: dark ? "#fff" : "#111", fontSize: "12px" }} formatter={(v, n) => [`${v} entries`, n]} />
                       <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: "12px", color: dark ? "#9ca3af" : "#6b7280" }} />

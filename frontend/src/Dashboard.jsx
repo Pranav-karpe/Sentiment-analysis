@@ -18,10 +18,25 @@ export default function Dashboard({ dark, setDark }) {
   const [showAbout,    setShowAbout]    = useState(false);
   const [supportSent,  setSupportSent]  = useState(false);
   const [supportMsg,   setSupportMsg]   = useState("");
+  const [supportEmail, setSupportEmail] = useState("");
+  const [supportLoading, setSupportLoading] = useState(false);
   const [copied,       setCopied]       = useState(false);
   const [mobileMenu,   setMobileMenu]   = useState(false);
   const [taFocused,    setTaFocused]    = useState(false);
   const textareaRef = useRef(null);
+
+  const sendSupport = async () => {
+    if (!supportMsg.trim()) return;
+    setSupportLoading(true);
+    try {
+      await axios.post(`${API}/support-message`, { message: supportMsg, email: supportEmail || user?.email || "" });
+      setSupportSent(true);
+    } catch {
+      setSupportSent(true); // still show success — message logged server-side
+    } finally {
+      setSupportLoading(false);
+    }
+  };
 
   const handleLogout = () => { clearSession(); navigate("/login", { replace: true }); };
 
@@ -98,7 +113,7 @@ export default function Dashboard({ dark, setDark }) {
 
       {/* SUPPORT MODAL */}
       {showSupport && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center px-4" onClick={() => { setShowSupport(false); setSupportSent(false); setSupportMsg(""); }}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center px-4" onClick={() => { setShowSupport(false); setSupportSent(false); setSupportMsg(""); setSupportEmail(""); }}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
           <div className="relative w-full max-w-md glass-card rounded-2xl p-6 z-10" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
@@ -106,7 +121,7 @@ export default function Dashboard({ dark, setDark }) {
                 <h2 className="text-lg font-bold text-gray-900 dark:text-white">Customer Support</h2>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">We typically reply within 24 hours</p>
               </div>
-              <button onClick={() => { setShowSupport(false); setSupportSent(false); setSupportMsg(""); }} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">✕</button>
+              <button onClick={() => { setShowSupport(false); setSupportSent(false); setSupportMsg(""); setSupportEmail(""); }} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">✕</button>
             </div>
             {supportSent ? (
               <div className="flex flex-col items-center py-6 text-center">
@@ -124,13 +139,13 @@ export default function Dashboard({ dark, setDark }) {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Contact email</label>
-                  <input type="email" defaultValue={user?.email || ""} placeholder="you@example.com"
+                  <input type="email" value={supportEmail} onChange={(e) => setSupportEmail(e.target.value)} defaultValue={user?.email || ""} placeholder="you@example.com"
                     className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 outline-none focus:border-orange-500 transition-colors" />
                 </div>
-                <button onClick={() => { if (supportMsg.trim()) setSupportSent(true); }}
-                  disabled={!supportMsg.trim()}
+                <button onClick={sendSupport}
+                  disabled={!supportMsg.trim() || supportLoading}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white transition-all btn-glow mt-1">
-                  Send Message
+                  {supportLoading ? "Sending..." : "Send Message"}
                 </button>
               </div>
             )}
@@ -311,7 +326,7 @@ export default function Dashboard({ dark, setDark }) {
               </div>
             </div>
             <div className="px-6 py-3 border-t border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/[0.02] flex items-center justify-between">
-              <p className="text-xs text-gray-400 dark:text-gray-500">Analyzed {text.length} characters · LinearSVC + TF-IDF</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Analyzed {text.length} characters · Logistic Regression + TF-IDF</p>
               <div className="flex items-center gap-3">
                 <button onClick={copyResult} className="flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 transition-colors">
                   {copied

@@ -14,16 +14,26 @@ from pymongo import MongoClient
 from bson import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
 
-# Tesseract path (Windows only — ignored on Linux/Render)
+# Tesseract — auto-detect path; env var overrides; Windows fallback
 try:
     import pytesseract
-    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    _tess_env = os.getenv("TESSERACT_CMD")
+    if _tess_env:
+        pytesseract.pytesseract.tesseract_cmd = _tess_env
+    elif os.name == "nt":  # Windows only
+        _win_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+        if os.path.isfile(_win_path):
+            pytesseract.pytesseract.tesseract_cmd = _win_path
 except ImportError:
     pass
 
 # App
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173", os.getenv("FRONTEND_URL", "*")])
+_allowed_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+_frontend_url = os.getenv("FRONTEND_URL")
+if _frontend_url:
+    _allowed_origins.append(_frontend_url)
+CORS(app, origins=_allowed_origins)
 
 # JWT
 JWT_SECRET  = os.getenv("JWT_SECRET", "sentimentai_jwt_secret_2024")
@@ -45,11 +55,10 @@ def verify_token():
     except Exception:
         return None
 
-# MongoDB Atlas
-MONGO_URI = os.getenv(
-    "MONGO_URI",
-    "mongodb+srv://karpepranav7_db_user:JsvEebEqnbkQYuzQ@cluster0.y3oeaso.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-)
+# MongoDB Atlas — URI must be set via environment variable
+MONGO_URI = os.getenv("MONGO_URI")
+if not MONGO_URI:
+    raise RuntimeError("MONGO_URI environment variable is not set. Set it before starting the server.")
 
 client = MongoClient(
     MONGO_URI,
@@ -136,20 +145,34 @@ def safe_hash_check(stored, password):
         stored = stored.decode("utf-8")
     return check_password_hash(stored, password)
 
+def sanitize_email(raw):
+    """Reject non-string or Mongo operator payloads; return clean lowercase email or None."""
+    if not isinstance(raw, str):
+        return None
+    clean = raw.strip().lower()
+    if not EMAIL_RE.match(clean):
+        return None
+    return clean
+
+# In-memory OTP store: { email: {"otp": str, "expires": datetime} }
+import secrets
+_otp_store: dict = {}
+
 
 # Auth Routes
 
 @app.route("/signup", methods=["POST"])
 def signup():
     data     = request.get_json(force=True, silent=True) or {}
-    email    = data.get("email", "").strip().lower()
-    password = data.get("password", "").strip()
-    name     = data.get("name", "").strip()
+    email    = sanitize_email(data.get("email", ""))
+    password = data.get("password", "")
+    if not isinstance(password, str):
+        return err("Invalid input")
+    password = password.strip()
+    name     = str(data.get("name", "")).strip()
 
     if not email or not password:
         return err("Email and password are required")
-    if not EMAIL_RE.match(email):
-        return err("Invalid email format")
     if len(password) < 6:
         return err("Password must be at least 6 characters")
     if users.find_one({"email": email}):
@@ -167,13 +190,14 @@ def signup():
 @app.route("/login", methods=["POST"])
 def login():
     data     = request.get_json(force=True, silent=True) or {}
-    email    = data.get("email", "").strip().lower()
-    password = data.get("password", "").strip()
+    email    = sanitize_email(data.get("email", ""))
+    password = data.get("password", "")
+    if not isinstance(password, str):
+        return err("Invalid input")
+    password = password.strip()
 
     if not email or not password:
         return err("All fields are required")
-    if not EMAIL_RE.match(email):
-        return err("Invalid email format")
 
     user = users.find_one({"email": email})
     if not user:
@@ -184,19 +208,48 @@ def login():
     return ok({"message": "Login successful", "name": user["name"], "email": email, "token": make_token(email)})
 
 
+@app.route("/request-otp", methods=["POST"])
+def request_otp():
+    data  = request.get_json(force=True, silent=True) or {}
+    email = sanitize_email(data.get("email", ""))
+    if not email:
+        return err("Invalid email")
+    if not users.find_one({"email": email}):
+        return err("No account found with this email", 404)
+    otp = secrets.token_hex(3).upper()  # 6-char hex OTP
+    _otp_store[email] = {"otp": otp, "expires": datetime.now(timezone.utc) + timedelta(minutes=10)}
+    # In production: send via email. For now, return in response (dev mode).
+    print(f"[OTP] {email} → {otp}")  # server log only
+    return ok({"message": "OTP sent to your email", "otp": otp})
+
+
 @app.route("/forgot-password", methods=["POST"])
 def forgot_password():
     data         = request.get_json(force=True, silent=True) or {}
-    email        = data.get("email", "").strip().lower()
-    new_password = data.get("new_password", "").strip()
+    email        = sanitize_email(data.get("email", ""))
+    otp          = str(data.get("otp", "")).strip().upper()
+    new_password = data.get("new_password", "")
+    if not isinstance(new_password, str):
+        return err("Invalid input")
+    new_password = new_password.strip()
 
-    if not email or not new_password:
+    if not email or not otp or not new_password:
         return err("All fields are required")
     if len(new_password) < 6:
         return err("Password must be at least 6 characters")
     if not users.find_one({"email": email}):
         return err("No account found with this email", 404)
 
+    record = _otp_store.get(email)
+    if not record:
+        return err("No OTP requested for this email", 400)
+    if datetime.now(timezone.utc) > record["expires"]:
+        _otp_store.pop(email, None)
+        return err("OTP has expired. Please request a new one.", 400)
+    if record["otp"] != otp:
+        return err("Invalid OTP", 400)
+
+    _otp_store.pop(email, None)
     users.update_one(
         {"email": email},
         {"$set": {"password": generate_password_hash(new_password)}}
@@ -209,11 +262,15 @@ def forgot_password():
 @app.route("/predict", methods=["POST"])
 def predict():
     data      = request.get_json(force=True, silent=True) or {}
-    text      = data.get("text", "").strip()
+    text      = data.get("text", "")
+    if not isinstance(text, str):
+        return err("Invalid input")
+    text = text.strip()
     jwt_email = verify_token()
     if jwt_email == "__expired__":
         return err("Session expired. Please log in again.", 401)
-    email = jwt_email or data.get("email", "").strip()
+    raw_email = jwt_email or data.get("email", "")
+    email = sanitize_email(raw_email) if raw_email else None
 
     if not text:
         return err("Text cannot be empty")
@@ -268,7 +325,8 @@ def history():
     jwt_email = verify_token()
     if jwt_email == "__expired__":
         return err("Session expired. Please log in again.", 401)
-    email = jwt_email or request.args.get("email", "").strip()
+    raw_email = jwt_email or request.args.get("email", "")
+    email = sanitize_email(raw_email) if raw_email else None
     if not email:
         return ok([])
 
@@ -300,17 +358,30 @@ def delete_history(id):
         return err("Invalid ID")
 
 
+# Support message
+
+@app.route("/support-message", methods=["POST"])
+def support_message():
+    data    = request.get_json(force=True, silent=True) or {}
+    message = str(data.get("message", "")).strip()
+    email   = str(data.get("email", "")).strip()
+    if not message:
+        return err("Message cannot be empty")
+    # Log to server console; extend with email/DB storage as needed
+    print(f"[SUPPORT] from={email or 'anonymous'} | {message[:500]}")
+    db["support_messages"].insert_one({
+        "email":      email,
+        "message":    message,
+        "created_at": datetime.now(timezone.utc)
+    })
+    return ok({"message": "Support message received"})
+
+
 # Utility
 
 @app.route("/")
 def home():
     return "API Running 🚀"
-
-
-@app.route("/reset-users", methods=["GET"])
-def reset_users():
-    result = users.delete_many({})
-    return ok({"message": f"Deleted {result.deleted_count} users. Please signup again."})
 
 
 # File Upload
@@ -336,8 +407,12 @@ def analyze_file():
             import pytesseract
             from PIL import Image
             import io
-            img  = Image.open(io.BytesIO(f.read()))
-            text = pytesseract.image_to_string(img).strip()
+            img_bytes = io.BytesIO(f.read())
+            try:
+                img  = Image.open(img_bytes)
+                text = pytesseract.image_to_string(img).strip()
+            finally:
+                img_bytes.close()
 
         else:
             return err("Unsupported file type. Use .txt, .pdf, .jpg, or .png")
@@ -351,8 +426,9 @@ def analyze_file():
     sentiment, confidence = run_sentiment(text)
 
     jwt_email = verify_token()
-    email     = (jwt_email if jwt_email and jwt_email != "__expired__"
-                 else request.form.get("email", "").strip())
+    raw_email = (jwt_email if jwt_email and jwt_email != "__expired__"
+                 else request.form.get("email", ""))
+    email = sanitize_email(raw_email) if raw_email else None
     if email:
         collection.insert_one({
             "user_email": email,
@@ -383,48 +459,53 @@ def export_report():
     pos        = data.get("positive_count", 0)
     neg        = data.get("negative_count", 0)
 
-    buf    = BytesIO()
-    doc    = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2*cm, rightMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
-    styles = getSampleStyleSheet()
-    story  = []
+    buf = BytesIO()
+    try:
+        doc    = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2*cm, rightMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+        styles = getSampleStyleSheet()
+        story  = []
 
-    story.append(Paragraph("SentimentAI — Analysis Report", ParagraphStyle("title", fontSize=20, fontName="Helvetica-Bold", textColor=colors.HexColor("#f97316"), spaceAfter=6)))
-    story.append(Paragraph(f"Generated: {datetime.now(timezone.utc).strftime('%d %b %Y, %I:%M %p UTC')}", ParagraphStyle("sub", fontSize=9, textColor=colors.grey, spaceAfter=20)))
-    story.append(Paragraph("Sentiment Result", ParagraphStyle("h2", fontSize=13, fontName="Helvetica-Bold", spaceAfter=8)))
-    story.append(Paragraph(f"<font color='#{('22c55e' if sentiment == 'Positive' else 'ef4444')}'>{sentiment}</font>  —  {int(confidence*100)}% confident",
-        ParagraphStyle("result", fontSize=14, fontName="Helvetica-Bold", spaceAfter=16)))
-    story.append(Paragraph("Analyzed Text", ParagraphStyle("h2", fontSize=13, fontName="Helvetica-Bold", spaceAfter=8)))
-    story.append(Paragraph(text[:1000], ParagraphStyle("body", fontSize=10, leading=14, spaceAfter=20)))
+        story.append(Paragraph("SentimentAI — Analysis Report", ParagraphStyle("title", fontSize=20, fontName="Helvetica-Bold", textColor=colors.HexColor("#f97316"), spaceAfter=6)))
+        story.append(Paragraph(f"Generated: {datetime.now(timezone.utc).strftime('%d %b %Y, %I:%M %p UTC')}", ParagraphStyle("sub", fontSize=9, textColor=colors.grey, spaceAfter=20)))
+        story.append(Paragraph("Sentiment Result", ParagraphStyle("h2", fontSize=13, fontName="Helvetica-Bold", spaceAfter=8)))
+        story.append(Paragraph(f"<font color='#{('22c55e' if sentiment == 'Positive' else 'ef4444')}'>{sentiment}</font>  —  {int(confidence*100)}% confident",
+            ParagraphStyle("result", fontSize=14, fontName="Helvetica-Bold", spaceAfter=16)))
+        story.append(Paragraph("Analyzed Text", ParagraphStyle("h2", fontSize=13, fontName="Helvetica-Bold", spaceAfter=8)))
+        story.append(Paragraph(text[:1000], ParagraphStyle("body", fontSize=10, leading=14, spaceAfter=20)))
 
-    if pos + neg > 0:
-        story.append(Paragraph("Session Summary", ParagraphStyle("h2", fontSize=13, fontName="Helvetica-Bold", spaceAfter=8)))
-        table = Table([["Sentiment", "Count", "Percentage"],
-                       ["Positive", str(pos), f"{round(pos/(pos+neg)*100)}%"],
-                       ["Negative", str(neg), f"{round(neg/(pos+neg)*100)}%"],
-                       ["Total",    str(pos+neg), "100%"]],
-                      colWidths=[6*cm, 4*cm, 4*cm])
-        table.setStyle(TableStyle([
-            ("BACKGROUND",  (0,0), (-1,0), colors.HexColor("#f97316")),
-            ("TEXTCOLOR",   (0,0), (-1,0), colors.white),
-            ("FONTNAME",    (0,0), (-1,0), "Helvetica-Bold"),
-            ("FONTSIZE",    (0,0), (-1,-1), 10),
-            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.HexColor("#f9fafb"), colors.white]),
-            ("GRID",        (0,0), (-1,-1), 0.5, colors.HexColor("#e5e7eb")),
-            ("ALIGN",       (1,0), (-1,-1), "CENTER"),
-            ("TOPPADDING",  (0,0), (-1,-1), 6),
-            ("BOTTOMPADDING",(0,0), (-1,-1), 6),
-        ]))
-        story.append(table)
-        story.append(Spacer(1, 16))
+        if pos + neg > 0:
+            story.append(Paragraph("Session Summary", ParagraphStyle("h2", fontSize=13, fontName="Helvetica-Bold", spaceAfter=8)))
+            table = Table([["Sentiment", "Count", "Percentage"],
+                           ["Positive", str(pos), f"{round(pos/(pos+neg)*100)}%"],
+                           ["Negative", str(neg), f"{round(neg/(pos+neg)*100)}%"],
+                           ["Total",    str(pos+neg), "100%"]],
+                          colWidths=[6*cm, 4*cm, 4*cm])
+            table.setStyle(TableStyle([
+                ("BACKGROUND",  (0,0), (-1,0), colors.HexColor("#f97316")),
+                ("TEXTCOLOR",   (0,0), (-1,0), colors.white),
+                ("FONTNAME",    (0,0), (-1,0), "Helvetica-Bold"),
+                ("FONTSIZE",    (0,0), (-1,-1), 10),
+                ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.HexColor("#f9fafb"), colors.white]),
+                ("GRID",        (0,0), (-1,-1), 0.5, colors.HexColor("#e5e7eb")),
+                ("ALIGN",       (1,0), (-1,-1), "CENTER"),
+                ("TOPPADDING",  (0,0), (-1,-1), 6),
+                ("BOTTOMPADDING",(0,0), (-1,-1), 6),
+            ]))
+            story.append(table)
+            story.append(Spacer(1, 16))
 
-    story.append(Paragraph("Powered by SentimentAI · Logistic Regression + TF-IDF",
-        ParagraphStyle("footer", fontSize=8, textColor=colors.grey)))
+        story.append(Paragraph("Powered by SentimentAI · Logistic Regression + TF-IDF",
+            ParagraphStyle("footer", fontSize=8, textColor=colors.grey)))
 
-    doc.build(story)
+        doc.build(story)
+    except Exception:
+        buf.close()
+        raise
     buf.seek(0)
     return send_file(buf, mimetype="application/pdf",
                      as_attachment=True, download_name="sentiment_report.pdf")
 
 
 if __name__ == "__main__":
-    app.run(debug=True, use_reloader=False)
+    debug_mode = os.getenv("FLASK_DEBUG", "false").lower() == "true"
+    app.run(debug=debug_mode, use_reloader=False)

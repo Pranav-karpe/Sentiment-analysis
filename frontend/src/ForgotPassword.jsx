@@ -3,20 +3,36 @@ import axios from "axios";
 import API from "./api";
 
 export default function ForgotPassword({ onNavigate }) {
-  const [form, setForm] = useState({ email: "", new_password: "" });
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [step,         setStep]         = useState(1); // 1=email, 2=otp+password
+  const [form,         setForm]         = useState({ email: "", otp: "", new_password: "" });
+  const [error,        setError]        = useState("");
+  const [success,      setSuccess]      = useState("");
+  const [loading,      setLoading]      = useState(false);
 
   const handle = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-  const submit = async (e) => {
+  const requestOtp = async (e) => {
     e.preventDefault();
-    setError("");
-    setSuccess("");
-    setLoading(true);
+    setError(""); setLoading(true);
     try {
-      const res = await axios.post(`${API}/forgot-password`, form);
+      await axios.post(`${API}/request-otp`, { email: form.email });
+      setStep(2);
+    } catch (err) {
+      setError(err.response?.data?.error || "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetPassword = async (e) => {
+    e.preventDefault();
+    setError(""); setSuccess(""); setLoading(true);
+    try {
+      const res = await axios.post(`${API}/forgot-password`, {
+        email:        form.email,
+        otp:          form.otp,
+        new_password: form.new_password,
+      });
       setSuccess(res.data.message + " — you can now sign in.");
     } catch (err) {
       setError(err.response?.data?.error || "Something went wrong");
@@ -43,61 +59,105 @@ export default function ForgotPassword({ onNavigate }) {
           {/* Header */}
           <div className="px-6 pt-6 pb-4 border-b border-gray-100 dark:border-white/5">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">Reset password</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Enter your email and a new password</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              {step === 1 ? "Enter your email to receive a verification code" : "Enter the code and your new password"}
+            </p>
           </div>
 
-          {/* Form */}
-          <form onSubmit={submit} className="px-6 py-5 flex flex-col gap-4">
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Email</label>
-              <input
-                type="email"
-                name="email"
-                value={form.email}
-                onChange={handle}
-                placeholder="you@example.com"
-                required
-                className="w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 outline-none focus:border-orange-500 transition-colors"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">New password</label>
-              <input
-                type="password"
-                name="new_password"
-                value={form.new_password}
-                onChange={handle}
-                placeholder="Min. 6 characters"
-                required
-                className="w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 outline-none focus:border-orange-500 transition-colors"
-              />
-            </div>
-
-            {error && (
-              <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-sm">
-                <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-5.25a.75.75 0 001.5 0v-4a.75.75 0 00-1.5 0v4zm.75-7a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" />
-                </svg>
-                {error}
+          {/* Step 1 — Email */}
+          {step === 1 && (
+            <form onSubmit={requestOtp} className="px-6 py-5 flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Email</label>
+                <input
+                  type="email"
+                  name="email"
+                  value={form.email}
+                  onChange={handle}
+                  placeholder="you@example.com"
+                  required
+                  className="w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 outline-none focus:border-orange-500 transition-colors"
+                />
               </div>
-            )}
 
-            {success && (
-              <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20 text-green-600 dark:text-green-400 text-sm">
-                ✅ {success}
+              {error && (
+                <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-sm">
+                  <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-5.25a.75.75 0 001.5 0v-4a.75.75 0 00-1.5 0v4zm.75-7a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" />
+                  </svg>
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold bg-orange-500 hover:bg-orange-600 active:scale-95 disabled:opacity-40 text-white transition-all shadow-md shadow-orange-500/20"
+              >
+                {loading ? "Sending code..." : "Send verification code"}
+              </button>
+            </form>
+          )}
+
+          {/* Step 2 — OTP + New Password */}
+          {step === 2 && (
+            <form onSubmit={resetPassword} className="px-6 py-5 flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Verification code</label>
+                <input
+                  type="text"
+                  name="otp"
+                  value={form.otp}
+                  onChange={handle}
+                  placeholder="Enter 6-character code"
+                  required
+                  maxLength={6}
+                  className="w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 outline-none focus:border-orange-500 transition-colors font-mono tracking-widest uppercase"
+                />
               </div>
-            )}
 
-            <button
-              type="submit"
-              disabled={loading || !!success}
-              className="w-full py-2.5 rounded-xl text-sm font-semibold bg-orange-500 hover:bg-orange-600 active:scale-95 disabled:opacity-40 text-white transition-all shadow-md shadow-orange-500/20"
-            >
-              {loading ? "Resetting..." : "Reset password"}
-            </button>
-          </form>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">New password</label>
+                <input
+                  type="password"
+                  name="new_password"
+                  value={form.new_password}
+                  onChange={handle}
+                  placeholder="Min. 6 characters"
+                  required
+                  className="w-full px-4 py-2.5 rounded-xl text-sm bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 outline-none focus:border-orange-500 transition-colors"
+                />
+              </div>
+
+              {error && (
+                <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-sm">
+                  <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-5.25a.75.75 0 001.5 0v-4a.75.75 0 00-1.5 0v4zm.75-7a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" />
+                  </svg>
+                  {error}
+                </div>
+              )}
+
+              {success && (
+                <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20 text-green-600 dark:text-green-400 text-sm">
+                  ✅ {success}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading || !!success}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold bg-orange-500 hover:bg-orange-600 active:scale-95 disabled:opacity-40 text-white transition-all shadow-md shadow-orange-500/20"
+              >
+                {loading ? "Resetting..." : "Reset password"}
+              </button>
+
+              <button type="button" onClick={() => { setStep(1); setError(""); setSuccess(""); }}
+                className="text-xs text-gray-400 hover:text-orange-500 transition-colors text-center">
+                ← Use a different email
+              </button>
+            </form>
+          )}
 
           {/* Footer */}
           <div className="px-6 py-4 border-t border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/[0.02] text-center">
@@ -110,9 +170,9 @@ export default function ForgotPassword({ onNavigate }) {
           </div>
         </div>
 
-        {/* Back */}
-        <button onClick={() => onNavigate("dashboard")} className="mt-6 w-full text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-          ← Back to home
+        {/* Back — fixed to go to login, not dashboard */}
+        <button onClick={() => onNavigate("login")} className="mt-6 w-full text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+          ← Back to login
         </button>
       </div>
     </div>
