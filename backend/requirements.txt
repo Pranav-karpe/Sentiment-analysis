@@ -13,3 +13,4 @@ pytesseract
 pymupdf
 certifi
 gunicorn
+python-dotenv

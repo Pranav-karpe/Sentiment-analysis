@@ -15,6 +15,19 @@ export default function Signup({ onNavigate, onLoginSuccess }) {
     setLoading(true);
     try {
       await axios.post(`${API}/signup`, form);
+    } catch (err) {
+      if (err.response) {
+        setError(err.response.data?.error || "Signup failed");
+      } else if (err.request) {
+        setError("Cannot reach server. Make sure Flask is running on port 5000.");
+      } else {
+        setError("Something went wrong. Please try again.");
+      }
+      setLoading(false);
+      return;
+    }
+    // Signup succeeded — now auto-login
+    try {
       const res = await axios.post(`${API}/login`, {
         email: form.email,
         password: form.password,
@@ -22,13 +35,11 @@ export default function Signup({ onNavigate, onLoginSuccess }) {
       onLoginSuccess(res.data.name, res.data.email, res.data.token);
     } catch (err) {
       if (err.response) {
-        // Backend replied with an error — show exact message
-        setError(err.response.data?.error || "Signup failed");
+        setError(err.response.data?.error || "Account created but login failed. Please sign in manually.");
       } else if (err.request) {
-        // Request made but no response — Flask not running
-        setError("Cannot reach server. Make sure Flask is running on port 5000.");
+        setError("Account created but cannot reach server. Please sign in manually.");
       } else {
-        setError("Something went wrong. Please try again.");
+        setError("Account created. Please sign in manually.");
       }
     } finally {
       setLoading(false);

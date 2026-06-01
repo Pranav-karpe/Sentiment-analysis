@@ -9,6 +9,7 @@ import API from "./api";
 export default function Dashboard({ dark, setDark }) {
   const navigate = useNavigate();
   const user     = (() => { try { return JSON.parse(localStorage.getItem("user")); } catch { return null; } })();
+  const isGuest  = !user;
 
   const [text,         setText]         = useState("");
   const [result,       setResult]       = useState(null);
@@ -159,12 +160,12 @@ export default function Dashboard({ dark, setDark }) {
       {/* NAVBAR */}
       <header className="fixed top-0 inset-x-0 z-50 flex justify-center pt-14 px-4 relative">
         <nav className="w-full max-w-4xl flex items-center justify-between px-6 py-3 rounded-2xl glass-nav">
-          <button onClick={() => navigate("/dashboard")} className="flex items-center gap-2 font-bold text-xl tracking-tight select-none group">
+          <button onClick={() => navigate(isGuest ? "/guest" : "/dashboard")} className="flex items-center gap-2 font-bold text-xl tracking-tight select-none group">
             <span className="w-7 h-7 rounded-lg bg-orange-500 flex items-center justify-center text-white text-sm font-black logo-icon-glow">S</span>
             <span className="logo-name-glow">Sentiment<span className="text-orange-500">AI</span></span>
           </button>
           <div className="hidden sm:flex items-center gap-6 text-sm font-medium text-gray-500 dark:text-gray-400">
-            <button onClick={() => navigate("/analytics")} className="nav-link-glow hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1.5">
+            <button onClick={() => isGuest ? navigate("/login") : navigate("/analytics")} className="nav-link-glow hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1.5">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
               Dashboard
             </button>
@@ -206,7 +207,7 @@ export default function Dashboard({ dark, setDark }) {
         {mobileMenu && (
           <div className="absolute top-full left-4 right-4 mt-2 sm:hidden glass-card rounded-2xl px-4 py-3 flex flex-col gap-1 z-50 shadow-xl">
             {[
-              { label: "Dashboard", action: () => { navigate("/analytics"); setMobileMenu(false); } },
+              { label: "Dashboard", action: () => { isGuest ? navigate("/login") : navigate("/analytics"); setMobileMenu(false); } },
               { label: "Support",   action: () => { setShowSupport(true); setMobileMenu(false); } },
               { label: "About",     action: () => { setShowAbout(true); setMobileMenu(false); } },
             ].map(({ label, action }) => (

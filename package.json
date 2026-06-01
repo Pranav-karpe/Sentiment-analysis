@@ -1,0 +1,13 @@
+{
+  "name": "sentimentai",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "backend": "cd backend && python app.py",
+    "frontend": "cd frontend && npm run dev",
+    "dev": "concurrently --kill-others-on-fail --prefix-colors \"bgBlue.bold,bgGreen.bold\" --prefix \"[{name}]\" --names \"backend,frontend\" \"npm run backend\" \"npm run frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

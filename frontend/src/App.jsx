@@ -171,7 +171,8 @@ export default function App() {
               <AnalyticsDashboard dark={dark} setDark={setDark} />
             </RequireAuth>
           } />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/" element={<Navigate to="/guest" replace />} />
+          <Route path="*" element={<Navigate to="/guest" replace />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

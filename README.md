@@ -188,36 +188,25 @@ git clone <your-repo-url>
 cd tlpbl
 ```
 
-### 2. Backend Setup
+### 2. Install Python Dependencies
 
 ```bash
 cd backend
 pip install -r requirements.txt
+cd ..
 ```
 
-**Configure MongoDB:**
-- Open `backend/app.py`
-- Replace the MongoDB connection string with your own:
-  ```python
-  client = MongoClient("mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/...")
-  ```
-
-**Start the Flask server:**
-```bash
-python app.py
-```
-
-Backend will run on `http://127.0.0.1:5000`
-
-### 3. Frontend Setup
+### 3. Run the Project
 
 ```bash
-cd frontend
 npm install
 npm run dev
 ```
 
-Frontend will run on `http://localhost:5173`
+This single command starts **both** the Flask backend and the React frontend together using `concurrently`.
+
+- Backend runs on `http://127.0.0.1:5000`
+- Frontend runs on `http://localhost:5173`
 
 ### 4. Access the Application
 
@@ -230,26 +219,21 @@ http://localhost:5173
 
 ## 🔑 Environment Variables
 
-### Backend (`backend/app.py`)
+### Backend (`backend/.env`)
 
-Update these values directly in the code:
-
-```python
-# MongoDB connection
-client = MongoClient("mongodb+srv://<your-username>:<your-password>@cluster0.xxxxx.mongodb.net/...")
-
-# JWT secret (change in production)
-JWT_SECRET = "your-secret-key-here"
-
-# Tesseract path (Windows)
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+```env
+MONGO_URI=mongodb://127.0.0.1:27017/sentiment_analysis
+JWT_SECRET=sentiment_ai_secret_key
+FLASK_DEBUG=false
 ```
 
-### Frontend
+### Frontend (`frontend/.env.development`)
 
-No environment variables needed — API URL is hardcoded to `http://127.0.0.1:5000` in all components.
+```env
+VITE_API_URL=http://127.0.0.1:5000
+```
 
-For production, replace all instances of `http://127.0.0.1:5000` with your deployed backend URL.
+For production, update `VITE_API_URL` in `frontend/.env.production` to your deployed backend URL.
 
 ---
 
@@ -396,7 +380,7 @@ Landing Page → Signup/Login → Dashboard (protected) → Analytics (protected
 - **Neutral sentiment** — Currently not returned by the model (binary classifier). Neutral is only shown if manually added to history.
 - **OCR accuracy** — Tesseract struggles with handwritten text or low-quality images. Use high-resolution scans for best results.
 - **History limit** — Only last 10 entries are fetched. Pagination not yet implemented.
-- **Guest mode** — "Continue without account" button exists but is blocked by route protection. Guest analysis works but history is not saved.
+- **Guest mode** — Works fully. Sentiment analysis is available without login. History is not saved for guests.
 
 ---
 
@@ -411,8 +395,8 @@ python -c "import joblib; print('Model loaded:', joblib.load('model/model.pkl'))
 ### Frontend
 ```bash
 cd frontend
-npm run build  # Check for build errors
-npm run preview  # Test production build
+npm run build
+npm run preview
 ```
 
 ### Manual Testing Checklist

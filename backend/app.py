@@ -6,36 +6,59 @@ import re
 import certifi
 import joblib
 import jwt
+import secrets
 from datetime import datetime, timezone, timedelta
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from pymongo import MongoClient
+from pymongo.errors import PyMongoError, OperationFailure, ServerSelectionTimeoutError
 from bson import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
 
-# Tesseract — auto-detect path; env var overrides; Windows fallback
+# ── Load .env ───────────────────────────────────────────────────────────────────
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+except ImportError:
+    # fallback: manual .env parse (no python-dotenv installed)
+    _env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if os.path.isfile(_env_path):
+        with open(_env_path) as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if _line and not _line.startswith("#") and "=" in _line:
+                    _k, _v = _line.split("=", 1)
+                    os.environ[_k.strip()] = _v.strip()
+
+# ── Tesseract — auto-detect; env var overrides; Windows fallback ──────────────
 try:
     import pytesseract
     _tess_env = os.getenv("TESSERACT_CMD")
     if _tess_env:
         pytesseract.pytesseract.tesseract_cmd = _tess_env
-    elif os.name == "nt":  # Windows only
+    elif os.name == "nt":
         _win_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
         if os.path.isfile(_win_path):
             pytesseract.pytesseract.tesseract_cmd = _win_path
 except ImportError:
     pass
 
-# App
+# ── Flask app ─────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 _allowed_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
 _frontend_url = os.getenv("FRONTEND_URL")
 if _frontend_url:
     _allowed_origins.append(_frontend_url)
-CORS(app, origins=_allowed_origins)
+CORS(
+    app,
+    origins=_allowed_origins,
+    supports_credentials=True,
+    allow_headers=["Content-Type", "Authorization"],
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+)
 
-# JWT
+# ── JWT ───────────────────────────────────────────────────────────────────────
 JWT_SECRET  = os.getenv("JWT_SECRET", "sentimentai_jwt_secret_2024")
 JWT_EXPIRES = timedelta(hours=48)
 
@@ -55,36 +78,65 @@ def verify_token():
     except Exception:
         return None
 
-# MongoDB Atlas — URI must be set via environment variable
+# ── MongoDB ───────────────────────────────────────────────────────────────────
 MONGO_URI = os.getenv("MONGO_URI")
 if not MONGO_URI:
-    raise RuntimeError("MONGO_URI environment variable is not set. Set it before starting the server.")
+    MONGO_URI = "mongodb://127.0.0.1:27017/sentiment_analysis"
 
-client = MongoClient(
-    MONGO_URI,
-    tls=True,
-    tlsCAFile=certifi.where(),
-    serverSelectionTimeoutMS=10000,
-    connectTimeoutMS=10000,
-    socketTimeoutMS=10000
-)
-db         = client["sentimentDB"]
+# Connect with TLS only if it is an Atlas connection (i.e. starts with mongodb+srv or contains tls/ssl params, or isn't localhost)
+is_atlas = MONGO_URI.startswith("mongodb+srv://") or "replicaSet" in MONGO_URI or "mongodb.net" in MONGO_URI
+
+mongo_kwargs = {
+    "serverSelectionTimeoutMS": 5000,
+    "connectTimeoutMS": 5000,
+    "socketTimeoutMS": 5000
+}
+
+if is_atlas:
+    mongo_kwargs["tls"] = True
+    mongo_kwargs["tlsCAFile"] = certifi.where()
+
+print(f"[DB] Initializing MongoDB client with URI: {MONGO_URI} (Atlas={is_atlas})")
+client = MongoClient(MONGO_URI, **mongo_kwargs)
+
+# Verify database connection on startup
+try:
+    client.admin.command('ping')
+    print("==================================================================")
+    print(f"DATABASE CONNECTION VERIFIED SUCCESSFUL: {MONGO_URI}")
+    print("==================================================================")
+except Exception as e:
+    print("==================================================================")
+    print(f"DATABASE CONNECTION FAILED ON STARTUP: {e}")
+    print("==================================================================")
+
+
+# Try to get database from URI, default to sentiment_analysis
+db = None
+try:
+    # get_default_database can raise if no db in URI
+    db = client.get_default_database()
+except Exception:
+    pass
+
+if db is None:
+    db = client["sentiment_analysis"]
+
 users      = db["users"]
 collection = db["history"]
 
-# ML Model — absolute paths so Render can find them
+
+# ── ML Model ──────────────────────────────────────────────────────────────────
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 model      = joblib.load(os.path.join(BASE_DIR, "model", "model.pkl"))
 vectorizer = joblib.load(os.path.join(BASE_DIR, "model", "vectorizer.pkl"))
 
-# ── Improved prediction helpers ────────────────────────────────────────────────────────────────
-
+# ── Prediction helpers ────────────────────────────────────────────────────────
 NEGATION_RE = re.compile(
     r"\b(not|no|never|neither|nor|cannot|can't|won't|don't|doesn't|didn't|isn't|wasn't|aren't|weren't|haven't|hasn't|hadn't|shouldn't|wouldn't|couldn't)\s+(\w+)",
     re.IGNORECASE
 )
 
-# Sarcasm / irony signal phrases — presence biases toward Negative
 SARCASM_SIGNALS = [
     "yeah right", "oh great", "oh fantastic", "just love", "just loved",
     "so much fun", "best day ever", "best way", "oh wonderful", "oh perfect",
@@ -93,11 +145,10 @@ SARCASM_SIGNALS = [
     "oh sure", "of course", "obviously", "clearly", "as if",
 ]
 
-NEUTRAL_THRESHOLD = 0.62   # below this confidence → Neutral
-SARCASM_PENALTY   = 0.15   # subtract from positive probability when sarcasm detected
+NEUTRAL_THRESHOLD = 0.62
+SARCASM_PENALTY   = 0.15
 
 def preprocess(text):
-    """Match training-time preprocessing exactly."""
     text = str(text).lower()
     text = re.sub(r"n't", " not", text)
     text = re.sub(r"'re", " are", text)
@@ -111,27 +162,22 @@ def preprocess(text):
     return text.strip()
 
 def run_sentiment(raw_text):
-    """Returns (sentiment, confidence) with sarcasm detection and neutral threshold."""
-    cleaned   = preprocess(raw_text)
-    vec       = vectorizer.transform([cleaned])
-    proba     = model.predict_proba(vec)[0]   # [neg_prob, pos_prob]
+    cleaned = preprocess(raw_text)
+    vec     = vectorizer.transform([cleaned])
+    proba   = model.predict_proba(vec)[0]
     neg_p, pos_p = float(proba[0]), float(proba[1])
 
-    # Sarcasm signal check on original lowercased text
     lower = raw_text.lower()
-    sarcasm_hit = any(sig in lower for sig in SARCASM_SIGNALS)
-    if sarcasm_hit:
+    if any(sig in lower for sig in SARCASM_SIGNALS):
         pos_p = max(0.0, pos_p - SARCASM_PENALTY)
         neg_p = min(1.0, neg_p + SARCASM_PENALTY)
 
     confidence = round(max(pos_p, neg_p), 2)
-
     if confidence < NEUTRAL_THRESHOLD:
         return "Neutral", confidence
-    sentiment = "Positive" if pos_p > neg_p else "Negative"
-    return sentiment, confidence
+    return ("Positive" if pos_p > neg_p else "Negative"), confidence
 
-# Helpers
+# ── Helpers ───────────────────────────────────────────────────────────────────
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 def ok(data, code=200):
@@ -146,7 +192,7 @@ def safe_hash_check(stored, password):
     return check_password_hash(stored, password)
 
 def sanitize_email(raw):
-    """Reject non-string or Mongo operator payloads; return clean lowercase email or None."""
+    """Reject non-string / Mongo operator payloads; return clean lowercase email or None."""
     if not isinstance(raw, str):
         return None
     clean = raw.strip().lower()
@@ -154,12 +200,30 @@ def sanitize_email(raw):
         return None
     return clean
 
-# In-memory OTP store: { email: {"otp": str, "expires": datetime} }
-import secrets
+def db_err(e):
+    """Convert any PyMongoError into a clean JSON 503 response."""
+    print(f"[DB ERROR] {type(e).__name__}: {e}")
+    if isinstance(e, OperationFailure) and "auth" in str(e).lower():
+        return err(
+            "Database authentication failed. "
+            "Open backend/.env and make sure MONGO_URI has the correct username and password.",
+            503
+        )
+    if isinstance(e, ServerSelectionTimeoutError):
+        return err(
+            "Cannot reach the database. "
+            "Check your internet connection and MongoDB Atlas IP whitelist (add 0.0.0.0/0 for local dev).",
+            503
+        )
+    return err("Database error. Please try again later.", 503)
+
+# ── In-memory OTP store ───────────────────────────────────────────────────────
 _otp_store: dict = {}
 
 
-# Auth Routes
+# ═══════════════════════════════════════════════════════════════════════════════
+# AUTH ROUTES
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @app.route("/signup", methods=["POST"])
 def signup():
@@ -171,19 +235,31 @@ def signup():
     password = password.strip()
     name     = str(data.get("name", "")).strip()
 
-    if not email or not password:
-        return err("Email and password are required")
+    if not email:
+        return err("Invalid email format")
+    if not password:
+        return err("Password is required")
     if len(password) < 6:
         return err("Password must be at least 6 characters")
-    if users.find_one({"email": email}):
+
+    try:
+        existing = users.find_one({"email": email})
+    except PyMongoError as e:
+        return db_err(e)
+
+    if existing:
         return err("Email already registered", 409)
 
-    users.insert_one({
-        "name":       name,
-        "email":      email,
-        "password":   generate_password_hash(password),
-        "created_at": datetime.now(timezone.utc)
-    })
+    try:
+        users.insert_one({
+            "name":       name,
+            "email":      email,
+            "password_hash": generate_password_hash(password),
+            "created_at": datetime.now(timezone.utc)
+        })
+    except PyMongoError as e:
+        return db_err(e)
+
     return ok({"message": "Account created successfully"}, 201)
 
 
@@ -196,16 +272,29 @@ def login():
         return err("Invalid input")
     password = password.strip()
 
-    if not email or not password:
-        return err("All fields are required")
+    if not email:
+        return err("Invalid email format")
+    if not password:
+        return err("Password is required")
 
-    user = users.find_one({"email": email})
+    try:
+        user = users.find_one({"email": email})
+    except PyMongoError as e:
+        return db_err(e)
+
     if not user:
         return err("No account found with this email", 404)
-    if not safe_hash_check(user["password"], password):
+    
+    stored_hash = user.get("password_hash") or user.get("password")
+    if not stored_hash or not safe_hash_check(stored_hash, password):
         return err("Incorrect password", 401)
 
-    return ok({"message": "Login successful", "name": user["name"], "email": email, "token": make_token(email)})
+    return ok({
+        "message": "Login successful",
+        "name":    user.get("name", ""),
+        "email":   email,
+        "token":   make_token(email)
+    })
 
 
 @app.route("/request-otp", methods=["POST"])
@@ -214,12 +303,18 @@ def request_otp():
     email = sanitize_email(data.get("email", ""))
     if not email:
         return err("Invalid email")
-    if not users.find_one({"email": email}):
+
+    try:
+        exists = users.find_one({"email": email})
+    except PyMongoError as e:
+        return db_err(e)
+
+    if not exists:
         return err("No account found with this email", 404)
+
     otp = secrets.token_hex(3).upper()  # 6-char hex OTP
     _otp_store[email] = {"otp": otp, "expires": datetime.now(timezone.utc) + timedelta(minutes=10)}
-    # In production: send via email. For now, return in response (dev mode).
-    print(f"[OTP] {email} → {otp}")  # server log only
+    print(f"[OTP] {email} -> {otp}")   # server log — replace with email send in production
     return ok({"message": "OTP sent to your email", "otp": otp})
 
 
@@ -233,39 +328,59 @@ def forgot_password():
         return err("Invalid input")
     new_password = new_password.strip()
 
-    if not email or not otp or not new_password:
-        return err("All fields are required")
+    if not email:
+        return err("Invalid email format")
+    if not otp:
+        return err("Verification code is required")
+    if not new_password:
+        return err("New password is required")
     if len(new_password) < 6:
         return err("Password must be at least 6 characters")
-    if not users.find_one({"email": email}):
+
+    try:
+        exists = users.find_one({"email": email})
+    except PyMongoError as e:
+        return db_err(e)
+
+    if not exists:
         return err("No account found with this email", 404)
 
     record = _otp_store.get(email)
     if not record:
-        return err("No OTP requested for this email", 400)
+        return err("No verification code requested for this email. Click 'Send verification code' first.", 400)
     if datetime.now(timezone.utc) > record["expires"]:
         _otp_store.pop(email, None)
-        return err("OTP has expired. Please request a new one.", 400)
+        return err("Verification code has expired. Please request a new one.", 400)
     if record["otp"] != otp:
-        return err("Invalid OTP", 400)
+        return err("Invalid verification code", 400)
 
     _otp_store.pop(email, None)
-    users.update_one(
-        {"email": email},
-        {"$set": {"password": generate_password_hash(new_password)}}
-    )
+    try:
+        users.update_one(
+            {"email": email},
+            {
+                "$set": {"password_hash": generate_password_hash(new_password)},
+                "$unset": {"password": ""}
+            }
+        )
+    except PyMongoError as e:
+        return db_err(e)
+
     return ok({"message": "Password reset successful"})
 
 
-# Sentiment Routes
+# ═══════════════════════════════════════════════════════════════════════════════
+# SENTIMENT ROUTES
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    data      = request.get_json(force=True, silent=True) or {}
-    text      = data.get("text", "")
+    data  = request.get_json(force=True, silent=True) or {}
+    text  = data.get("text", "")
     if not isinstance(text, str):
         return err("Invalid input")
     text = text.strip()
+
     jwt_email = verify_token()
     if jwt_email == "__expired__":
         return err("Session expired. Please log in again.", 401)
@@ -275,48 +390,43 @@ def predict():
     if not text:
         return err("Text cannot be empty")
 
-    # ── Multi-line detection: split by newlines, analyze each line separately ──
     lines = [l.strip() for l in text.splitlines() if l.strip()]
 
     if len(lines) > 1:
-        # Batch mode — analyze each line individually
         results = []
         for line in lines:
             s, c = run_sentiment(line)
             results.append({"text": line, "sentiment": s, "confidence": c})
             if email:
-                collection.insert_one({
-                    "user_email": email,
-                    "text":       line,
-                    "sentiment":  s,
-                    "confidence": c,
-                    "created_at": datetime.now(timezone.utc)
-                })
-        # Overall summary: majority sentiment
+                try:
+                    collection.insert_one({
+                        "user_email": email, "text": line,
+                        "sentiment": s, "confidence": c,
+                        "created_at": datetime.now(timezone.utc)
+                    })
+                except PyMongoError:
+                    pass
         pos = sum(1 for r in results if r["sentiment"] == "Positive")
         neg = sum(1 for r in results if r["sentiment"] == "Negative")
         neu = sum(1 for r in results if r["sentiment"] == "Neutral")
-        overall = max([(pos, "Positive"), (neg, "Negative"), (neu, "Neutral")], key=lambda x: x[0])[1]
+        overall  = max([(pos, "Positive"), (neg, "Negative"), (neu, "Neutral")], key=lambda x: x[0])[1]
         avg_conf = round(sum(r["confidence"] for r in results) / len(results), 2)
         return ok({
-            "sentiment":  overall,
-            "confidence": avg_conf,
-            "batch":      True,
-            "multiple":   True,
-            "results":    results,
-            "summary":    {"positive": pos, "negative": neg, "neutral": neu, "total": len(results)}
+            "sentiment": overall, "confidence": avg_conf,
+            "batch": True, "multiple": True, "results": results,
+            "summary": {"positive": pos, "negative": neg, "neutral": neu, "total": len(results)}
         })
 
-    # Single line mode (existing behaviour)
     sentiment, confidence = run_sentiment(text)
     if email:
-        collection.insert_one({
-            "user_email": email,
-            "text":       text,
-            "sentiment":  sentiment,
-            "confidence": confidence,
-            "created_at": datetime.now(timezone.utc)
-        })
+        try:
+            collection.insert_one({
+                "user_email": email, "text": text,
+                "sentiment": sentiment, "confidence": confidence,
+                "created_at": datetime.now(timezone.utc)
+            })
+        except PyMongoError:
+            pass
     return ok({"sentiment": sentiment, "confidence": confidence})
 
 
@@ -330,17 +440,20 @@ def history():
     if not email:
         return ok([])
 
-    data = [
-        {
-            "id":         str(item["_id"]),
-            "text":       item["text"],
-            "sentiment":  item["sentiment"],
-            "confidence": item.get("confidence"),
-            "created_at": item["created_at"].strftime("%d %b, %I:%M %p")
-                          if item.get("created_at") else ""
-        }
-        for item in collection.find({"user_email": email}).sort("created_at", -1).limit(10)
-    ]
+    try:
+        data = [
+            {
+                "id":         str(item["_id"]),
+                "text":       item["text"],
+                "sentiment":  item["sentiment"],
+                "confidence": item.get("confidence"),
+                "created_at": item["created_at"].strftime("%d %b, %I:%M %p")
+                              if item.get("created_at") else ""
+            }
+            for item in collection.find({"user_email": email}).sort("created_at", -1).limit(10)
+        ]
+    except PyMongoError as e:
+        return db_err(e)
     return ok(data)
 
 
@@ -354,11 +467,15 @@ def delete_history(id):
         if result.deleted_count == 0:
             return err("Record not found", 404)
         return ok({"message": "Deleted"})
+    except PyMongoError as e:
+        return db_err(e)
     except Exception:
         return err("Invalid ID")
 
 
-# Support message
+# ═══════════════════════════════════════════════════════════════════════════════
+# SUPPORT MESSAGE
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @app.route("/support-message", methods=["POST"])
 def support_message():
@@ -367,24 +484,30 @@ def support_message():
     email   = str(data.get("email", "")).strip()
     if not message:
         return err("Message cannot be empty")
-    # Log to server console; extend with email/DB storage as needed
     print(f"[SUPPORT] from={email or 'anonymous'} | {message[:500]}")
-    db["support_messages"].insert_one({
-        "email":      email,
-        "message":    message,
-        "created_at": datetime.now(timezone.utc)
-    })
+    try:
+        db["support_messages"].insert_one({
+            "email":      email,
+            "message":    message,
+            "created_at": datetime.now(timezone.utc)
+        })
+    except PyMongoError:
+        pass  # don't fail the user if support logging fails
     return ok({"message": "Support message received"})
 
 
-# Utility
+# ═══════════════════════════════════════════════════════════════════════════════
+# UTILITY
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @app.route("/")
 def home():
     return "API Running 🚀"
 
 
-# File Upload
+# ═══════════════════════════════════════════════════════════════════════════════
+# FILE UPLOAD
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @app.route("/analyze-file", methods=["POST"])
 def analyze_file():
@@ -430,17 +553,22 @@ def analyze_file():
                  else request.form.get("email", ""))
     email = sanitize_email(raw_email) if raw_email else None
     if email:
-        collection.insert_one({
-            "user_email": email,
-            "text":       text[:500],
-            "sentiment":  sentiment,
-            "confidence": confidence,
-            "created_at": datetime.now(timezone.utc)
-        })
+        try:
+            collection.insert_one({
+                "user_email": email,
+                "text":       text[:500],
+                "sentiment":  sentiment,
+                "confidence": confidence,
+                "created_at": datetime.now(timezone.utc)
+            })
+        except PyMongoError:
+            pass
     return ok({"sentiment": sentiment, "confidence": confidence, "text": text[:300]})
 
 
-# PDF Export
+# ═══════════════════════════════════════════════════════════════════════════════
+# PDF EXPORT
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @app.route("/export-report", methods=["POST"])
 def export_report():
@@ -461,35 +589,47 @@ def export_report():
 
     buf = BytesIO()
     try:
-        doc    = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2*cm, rightMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
-        styles = getSampleStyleSheet()
-        story  = []
+        doc   = SimpleDocTemplate(buf, pagesize=A4,
+                                   leftMargin=2*cm, rightMargin=2*cm,
+                                   topMargin=2*cm, bottomMargin=2*cm)
+        story = []
 
-        story.append(Paragraph("SentimentAI — Analysis Report", ParagraphStyle("title", fontSize=20, fontName="Helvetica-Bold", textColor=colors.HexColor("#f97316"), spaceAfter=6)))
-        story.append(Paragraph(f"Generated: {datetime.now(timezone.utc).strftime('%d %b %Y, %I:%M %p UTC')}", ParagraphStyle("sub", fontSize=9, textColor=colors.grey, spaceAfter=20)))
-        story.append(Paragraph("Sentiment Result", ParagraphStyle("h2", fontSize=13, fontName="Helvetica-Bold", spaceAfter=8)))
-        story.append(Paragraph(f"<font color='#{('22c55e' if sentiment == 'Positive' else 'ef4444')}'>{sentiment}</font>  —  {int(confidence*100)}% confident",
+        story.append(Paragraph("SentimentAI — Analysis Report",
+            ParagraphStyle("title", fontSize=20, fontName="Helvetica-Bold",
+                           textColor=colors.HexColor("#f97316"), spaceAfter=6)))
+        story.append(Paragraph(
+            f"Generated: {datetime.now(timezone.utc).strftime('%d %b %Y, %I:%M %p UTC')}",
+            ParagraphStyle("sub", fontSize=9, textColor=colors.grey, spaceAfter=20)))
+        story.append(Paragraph("Sentiment Result",
+            ParagraphStyle("h2", fontSize=13, fontName="Helvetica-Bold", spaceAfter=8)))
+        story.append(Paragraph(
+            f"<font color='#{('22c55e' if sentiment == 'Positive' else 'ef4444')}'>"
+            f"{sentiment}</font>  —  {int(confidence*100)}% confident",
             ParagraphStyle("result", fontSize=14, fontName="Helvetica-Bold", spaceAfter=16)))
-        story.append(Paragraph("Analyzed Text", ParagraphStyle("h2", fontSize=13, fontName="Helvetica-Bold", spaceAfter=8)))
-        story.append(Paragraph(text[:1000], ParagraphStyle("body", fontSize=10, leading=14, spaceAfter=20)))
+        story.append(Paragraph("Analyzed Text",
+            ParagraphStyle("h2", fontSize=13, fontName="Helvetica-Bold", spaceAfter=8)))
+        story.append(Paragraph(text[:1000],
+            ParagraphStyle("body", fontSize=10, leading=14, spaceAfter=20)))
 
         if pos + neg > 0:
-            story.append(Paragraph("Session Summary", ParagraphStyle("h2", fontSize=13, fontName="Helvetica-Bold", spaceAfter=8)))
-            table = Table([["Sentiment", "Count", "Percentage"],
-                           ["Positive", str(pos), f"{round(pos/(pos+neg)*100)}%"],
-                           ["Negative", str(neg), f"{round(neg/(pos+neg)*100)}%"],
-                           ["Total",    str(pos+neg), "100%"]],
-                          colWidths=[6*cm, 4*cm, 4*cm])
+            story.append(Paragraph("Session Summary",
+                ParagraphStyle("h2", fontSize=13, fontName="Helvetica-Bold", spaceAfter=8)))
+            table = Table(
+                [["Sentiment", "Count", "Percentage"],
+                 ["Positive", str(pos), f"{round(pos/(pos+neg)*100)}%"],
+                 ["Negative", str(neg), f"{round(neg/(pos+neg)*100)}%"],
+                 ["Total",    str(pos+neg), "100%"]],
+                colWidths=[6*cm, 4*cm, 4*cm])
             table.setStyle(TableStyle([
-                ("BACKGROUND",  (0,0), (-1,0), colors.HexColor("#f97316")),
-                ("TEXTCOLOR",   (0,0), (-1,0), colors.white),
-                ("FONTNAME",    (0,0), (-1,0), "Helvetica-Bold"),
-                ("FONTSIZE",    (0,0), (-1,-1), 10),
+                ("BACKGROUND",     (0,0), (-1,0), colors.HexColor("#f97316")),
+                ("TEXTCOLOR",      (0,0), (-1,0), colors.white),
+                ("FONTNAME",       (0,0), (-1,0), "Helvetica-Bold"),
+                ("FONTSIZE",       (0,0), (-1,-1), 10),
                 ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.HexColor("#f9fafb"), colors.white]),
-                ("GRID",        (0,0), (-1,-1), 0.5, colors.HexColor("#e5e7eb")),
-                ("ALIGN",       (1,0), (-1,-1), "CENTER"),
-                ("TOPPADDING",  (0,0), (-1,-1), 6),
-                ("BOTTOMPADDING",(0,0), (-1,-1), 6),
+                ("GRID",           (0,0), (-1,-1), 0.5, colors.HexColor("#e5e7eb")),
+                ("ALIGN",          (1,0), (-1,-1), "CENTER"),
+                ("TOPPADDING",     (0,0), (-1,-1), 6),
+                ("BOTTOMPADDING",  (0,0), (-1,-1), 6),
             ]))
             story.append(table)
             story.append(Spacer(1, 16))
