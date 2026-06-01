@@ -19,17 +19,20 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # ── Load .env ───────────────────────────────────────────────────────────────────
 try:
     from dotenv import load_dotenv
-    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"), override=True)
 except ImportError:
-    # fallback: manual .env parse (no python-dotenv installed)
-    _env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-    if os.path.isfile(_env_path):
-        with open(_env_path) as _f:
-            for _line in _f:
-                _line = _line.strip()
-                if _line and not _line.startswith("#") and "=" in _line:
-                    _k, _v = _line.split("=", 1)
-                    os.environ[_k.strip()] = _v.strip()
+    pass
+
+# Always perform manual .env load to guarantee we override any system environment variables with development settings
+_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+if os.path.isfile(_env_path):
+    with open(_env_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ[_k.strip()] = _v.strip()
+
 
 # ── Tesseract — auto-detect; env var overrides; Windows fallback ──────────────
 try:
@@ -200,22 +203,11 @@ def sanitize_email(raw):
         return None
     return clean
 
-def db_err(e):
-    """Convert any PyMongoError into a clean JSON 503 response."""
-    print(f"[DB ERROR] {type(e).__name__}: {e}")
-    if isinstance(e, OperationFailure) and "auth" in str(e).lower():
-        return err(
-            "Database authentication failed. "
-            "Open backend/.env and make sure MONGO_URI has the correct username and password.",
-            503
-        )
-    if isinstance(e, ServerSelectionTimeoutError):
-        return err(
-            "Cannot reach the database. "
-            "Check your internet connection and MongoDB Atlas IP whitelist (add 0.0.0.0/0 for local dev).",
-            503
-        )
-    return err("Database error. Please try again later.", 503)
+def db_err(e, custom_msg="Service temporarily unavailable. Please try again later."):
+    """Convert any PyMongoError into a clean JSON 503 response, outputting developer errors to stdout only."""
+    print(f"[DEVELOPER DB LOG] {type(e).__name__}: {e}")
+    return err(custom_msg, 503)
+
 
 # ── In-memory OTP store ───────────────────────────────────────────────────────
 _otp_store: dict = {}
@@ -245,7 +237,7 @@ def signup():
     try:
         existing = users.find_one({"email": email})
     except PyMongoError as e:
-        return db_err(e)
+        return db_err(e, "Unable to create account right now. Please try again later.")
 
     if existing:
         return err("Email already registered", 409)
@@ -258,7 +250,7 @@ def signup():
             "created_at": datetime.now(timezone.utc)
         })
     except PyMongoError as e:
-        return db_err(e)
+        return db_err(e, "Unable to create account right now. Please try again later.")
 
     return ok({"message": "Account created successfully"}, 201)
 
@@ -280,7 +272,7 @@ def login():
     try:
         user = users.find_one({"email": email})
     except PyMongoError as e:
-        return db_err(e)
+        return db_err(e, "Unable to sign in right now. Please try again later.")
 
     if not user:
         return err("No account found with this email", 404)
@@ -307,7 +299,7 @@ def request_otp():
     try:
         exists = users.find_one({"email": email})
     except PyMongoError as e:
-        return db_err(e)
+        return db_err(e, "Unable to reset password right now. Please try again later.")
 
     if not exists:
         return err("No account found with this email", 404)
@@ -340,7 +332,7 @@ def forgot_password():
     try:
         exists = users.find_one({"email": email})
     except PyMongoError as e:
-        return db_err(e)
+        return db_err(e, "Unable to reset password right now. Please try again later.")
 
     if not exists:
         return err("No account found with this email", 404)
@@ -364,7 +356,7 @@ def forgot_password():
             }
         )
     except PyMongoError as e:
-        return db_err(e)
+        return db_err(e, "Unable to reset password right now. Please try again later.")
 
     return ok({"message": "Password reset successful"})
 
@@ -453,7 +445,7 @@ def history():
             for item in collection.find({"user_email": email}).sort("created_at", -1).limit(10)
         ]
     except PyMongoError as e:
-        return db_err(e)
+        return db_err(e, "Unable to fetch history right now. Please try again later.")
     return ok(data)
 
 
@@ -468,7 +460,7 @@ def delete_history(id):
             return err("Record not found", 404)
         return ok({"message": "Deleted"})
     except PyMongoError as e:
-        return db_err(e)
+        return db_err(e, "Unable to delete record right now. Please try again later.")
     except Exception:
         return err("Invalid ID")
 
@@ -583,9 +575,22 @@ def export_report():
     data       = request.get_json(force=True, silent=True) or {}
     text       = data.get("text", "N/A")
     sentiment  = data.get("sentiment", "N/A")
-    confidence = data.get("confidence", 0)
-    pos        = data.get("positive_count", 0)
-    neg        = data.get("negative_count", 0)
+    
+    try:
+        confidence = float(data.get("confidence", 0) or 0.0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+
+    try:
+        pos = int(data.get("positive_count", 0) or 0)
+    except (TypeError, ValueError):
+        pos = 0
+
+    try:
+        neg = int(data.get("negative_count", 0) or 0)
+    except (TypeError, ValueError):
+        neg = 0
+
 
     buf = BytesIO()
     try:
