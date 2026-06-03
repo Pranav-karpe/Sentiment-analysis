@@ -16,22 +16,12 @@ from pymongo.errors import PyMongoError, OperationFailure, ServerSelectionTimeou
 from bson import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
 
-# ── Load .env ───────────────────────────────────────────────────────────────────
+# ── Load .env (local dev only — never overrides real environment variables) ───
 try:
     from dotenv import load_dotenv
-    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"), override=True)
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"), override=False)
 except ImportError:
     pass
-
-# Always perform manual .env load to guarantee we override any system environment variables with development settings
-_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-if os.path.isfile(_env_path):
-    with open(_env_path) as _f:
-        for _line in _f:
-            _line = _line.strip()
-            if _line and not _line.startswith("#") and "=" in _line:
-                _k, _v = _line.split("=", 1)
-                os.environ[_k.strip()] = _v.strip()
 
 
 # ── Tesseract — auto-detect; env var overrides; Windows fallback ──────────────

@@ -12,6 +12,8 @@ services:
         sync: false
       - key: FRONTEND_URL
         sync: false
+      - key: FLASK_DEBUG
+        value: false
 
   - type: web
     name: sentimentai-frontend
