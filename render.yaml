@@ -3,7 +3,7 @@ services:
     name: sentimentai-backend
     runtime: python
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    buildCommand: apt-get install -y tesseract-ocr && pip install -r requirements.txt
     startCommand: gunicorn app:app
     envVars:
       - key: MONGO_URI
@@ -14,6 +14,8 @@ services:
         sync: false
       - key: FLASK_DEBUG
         value: false
+      - key: TESSERACT_CMD
+        value: /usr/bin/tesseract
 
   - type: web
     name: sentimentai-frontend
