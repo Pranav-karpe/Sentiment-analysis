@@ -74,15 +74,18 @@ def verify_token():
 # ── MongoDB ───────────────────────────────────────────────────────────────────
 MONGO_URI = os.getenv("MONGO_URI")
 if not MONGO_URI:
-    MONGO_URI = "mongodb://127.0.0.1:27017/sentiment_analysis"
+    raise RuntimeError(
+        "MONGO_URI environment variable is not set. "
+        "Set it in your Render dashboard (or .env for local dev) to a MongoDB Atlas connection string."
+    )
 
 # Connect with TLS only if it is an Atlas connection (i.e. starts with mongodb+srv or contains tls/ssl params, or isn't localhost)
 is_atlas = MONGO_URI.startswith("mongodb+srv://") or "replicaSet" in MONGO_URI or "mongodb.net" in MONGO_URI
 
 mongo_kwargs = {
-    "serverSelectionTimeoutMS": 5000,
-    "connectTimeoutMS": 5000,
-    "socketTimeoutMS": 5000
+    "serverSelectionTimeoutMS": 30000,
+    "connectTimeoutMS": 30000,
+    "socketTimeoutMS": 30000
 }
 
 if is_atlas:
