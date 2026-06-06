@@ -20,6 +20,24 @@ export default function AnalyticsDashboard({ dark, setDark }) {
   const [supportMsg,    setSupportMsg]    = useState("");
   const [supportEmail,  setSupportEmail]  = useState("");
   const [supportLoading, setSupportLoading] = useState(false);
+  const [pdfLoading,    setPdfLoading]    = useState(false);
+  const [pdfError,      setPdfError]      = useState("");
+
+  const exportFullReport = async () => {
+    setPdfLoading(true); setPdfError("");
+    try {
+      const res = await axios.post(
+        `${API}/export-report`,
+        { text: "", sentiment: "", confidence: 0, email: user?.email ?? "" },
+        { ...authHeaders(), responseType: "blob" }
+      );
+      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const a = document.createElement("a"); a.href = url;
+      a.download = `sentimentai_report_${Date.now()}.pdf`; a.click();
+      URL.revokeObjectURL(url);
+    } catch { setPdfError("Could not generate report. Please try again."); }
+    finally { setPdfLoading(false); }
+  };
 
   const handleLogout = () => { clearSession(); navigate("/login", { replace: true }); };
 
@@ -192,8 +210,26 @@ export default function AnalyticsDashboard({ dark, setDark }) {
             <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
             Analytics Overview
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Dashboard</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Your sentiment analysis history and statistics</p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Dashboard</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Your sentiment analysis history and statistics</p>
+            </div>
+            {total > 0 && (
+              <button
+                onClick={exportFullReport}
+                disabled={pdfLoading}
+                className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-orange-500 hover:bg-orange-600 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-all duration-150 btn-glow">
+                {pdfLoading
+                  ? (<><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>Generating...</>)
+                  : (<><svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>Download Full Report</>)
+                }
+              </button>
+            )}
+          </div>
+          {pdfError && (
+            <p className="mt-2 text-xs text-red-500 dark:text-red-400">{pdfError}</p>
+          )}
         </div>
 
         {loadingHistory ? (

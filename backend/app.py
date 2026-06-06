@@ -25,6 +25,7 @@ except ImportError:
 
 
 # ── Tesseract — auto-detect; env var overrides; Windows fallback ──────────────
+TESSERACT_AVAILABLE = False
 try:
     import pytesseract
     _tess_env = os.getenv("TESSERACT_CMD")
@@ -34,8 +35,12 @@ try:
         _win_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
         if os.path.isfile(_win_path):
             pytesseract.pytesseract.tesseract_cmd = _win_path
-except ImportError:
-    pass
+    # Verify tesseract binary is actually callable
+    pytesseract.get_tesseract_version()
+    TESSERACT_AVAILABLE = True
+    print("[OCR] Tesseract available ✓")
+except Exception as _tess_err:
+    print(f"[OCR] Tesseract unavailable: {_tess_err}")
 
 # ── Flask app ─────────────────────────────────────────────────────────────────
 app = Flask(__name__)
@@ -494,6 +499,43 @@ def home():
 # FILE UPLOAD
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _run_ocr(image_bytes):
+    """Return (text, error_msg). text is None on failure, error_msg is None on success."""
+    if not TESSERACT_AVAILABLE:
+        return None, "Tesseract OCR is not installed on this server. Please extract the text manually and paste it into the text box."
+    try:
+        from PIL import Image
+        import io
+        img = Image.open(io.BytesIO(image_bytes))
+        text = pytesseract.image_to_string(img).strip()
+        if not text:
+            return None, "No text could be extracted from this image. Try a clearer, higher-resolution image."
+        return text, None
+    except Exception as e:
+        print(f"[OCR ERROR] {type(e).__name__}: {e}")
+        return None, "Unable to extract text from image. Ensure the image contains clear, readable text."
+
+
+@app.route("/ocr-image", methods=["POST"])
+def ocr_image():
+    """Extract text from an uploaded image and return it without running sentiment."""
+    if "file" not in request.files:
+        return jsonify({"success": False, "error": "No file uploaded"}), 400
+    f = request.files["file"]
+    if not f.filename.lower().endswith((".jpg", ".jpeg", ".png")):
+        return jsonify({"success": False, "error": "Only JPG and PNG images are supported"}), 400
+    try:
+        image_bytes = f.read()
+        if not image_bytes:
+            return jsonify({"success": False, "error": "Uploaded file is empty"}), 400
+    except Exception:
+        return jsonify({"success": False, "error": "Could not read uploaded file"}), 400
+    text, ocr_err = _run_ocr(image_bytes)
+    if ocr_err:
+        return jsonify({"success": False, "error": ocr_err}), 422
+    return jsonify({"success": True, "text": text})
+
+
 @app.route("/analyze-file", methods=["POST"])
 def analyze_file():
     if "file" not in request.files:
@@ -512,21 +554,16 @@ def analyze_file():
             text = " ".join(page.get_text() for page in doc).strip()
 
         elif name.endswith((".jpg", ".jpeg", ".png")):
-            import pytesseract
-            from PIL import Image
-            import io
-            img_bytes = io.BytesIO(f.read())
-            try:
-                img  = Image.open(img_bytes)
-                text = pytesseract.image_to_string(img).strip()
-            finally:
-                img_bytes.close()
+            text, ocr_err = _run_ocr(f.read())
+            if ocr_err:
+                return jsonify({"success": False, "error": ocr_err}), 422
 
         else:
             return err("Unsupported file type. Use .txt, .pdf, .jpg, or .png")
 
     except Exception as e:
-        return err(f"Could not read file: {str(e)}")
+        print(f"[FILE ERROR] {type(e).__name__}: {e}")
+        return err("Could not read file. Please check the file and try again.")
 
     if not text:
         return err("No text found in file")
@@ -555,93 +592,320 @@ def analyze_file():
 # PDF EXPORT
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _sentiment_color(s):
+    return {"Positive": "#16a34a", "Negative": "#dc2626"}.get(s, "#b45309")
+
+
+def _build_pdf(buf, records, current_text, current_sentiment, current_confidence, user_email):
+    """Build a professional multi-section PDF into buf (BytesIO)."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.platypus import (
+        BaseDocTemplate, Frame, PageTemplate,
+        Paragraph, Spacer, Table, TableStyle,
+        HRFlowable, KeepTogether, PageBreak
+    )
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+
+    W, H = A4
+    ORANGE   = colors.HexColor("#f97316")
+    GRAY_BG  = colors.HexColor("#f8fafc")
+    GRAY_LT  = colors.HexColor("#e2e8f0")
+    GRAY_TXT = colors.HexColor("#64748b")
+    BLACK    = colors.HexColor("#0f172a")
+    GREEN    = colors.HexColor("#16a34a")
+    RED      = colors.HexColor("#dc2626")
+    AMBER    = colors.HexColor("#b45309")
+    WHITE    = colors.white
+
+    LMARGIN = 2.2 * cm
+    RMARGIN = 2.2 * cm
+    TMARGIN = 2.0 * cm
+    BMARGIN = 2.2 * cm
+
+    # ── Page template with header rule + footer ──────────────────────────────
+    def _page_decor(canvas, doc):
+        canvas.saveState()
+        # header line
+        canvas.setStrokeColor(ORANGE)
+        canvas.setLineWidth(2.5)
+        canvas.line(LMARGIN, H - 1.2 * cm, W - RMARGIN, H - 1.2 * cm)
+        # header brand
+        canvas.setFont("Helvetica-Bold", 8)
+        canvas.setFillColor(ORANGE)
+        canvas.drawString(LMARGIN, H - 0.95 * cm, "SentimentAI")
+        canvas.setFillColor(GRAY_TXT)
+        canvas.setFont("Helvetica", 7.5)
+        canvas.drawRightString(W - RMARGIN, H - 0.95 * cm, "AI-Powered Sentiment Analysis")
+        # footer line
+        canvas.setStrokeColor(GRAY_LT)
+        canvas.setLineWidth(0.8)
+        canvas.line(LMARGIN, BMARGIN - 0.35 * cm, W - RMARGIN, BMARGIN - 0.35 * cm)
+        canvas.setFont("Helvetica", 7.5)
+        canvas.setFillColor(GRAY_TXT)
+        canvas.drawString(LMARGIN, BMARGIN - 0.65 * cm,
+            f"Generated {datetime.now(timezone.utc).strftime('%d %b %Y, %I:%M %p UTC')}  ·  {user_email or 'Guest'}")
+        canvas.drawRightString(W - RMARGIN, BMARGIN - 0.65 * cm,
+            f"Page {doc.page}")
+        canvas.restoreState()
+
+    frame = Frame(LMARGIN, BMARGIN, W - LMARGIN - RMARGIN, H - TMARGIN - BMARGIN,
+                  id="main", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
+    doc = BaseDocTemplate(buf, pagesize=A4, leftMargin=LMARGIN, rightMargin=RMARGIN,
+                          topMargin=TMARGIN + 0.6 * cm, bottomMargin=BMARGIN + 0.4 * cm)
+    doc.addPageTemplates([PageTemplate(id="main", frames=[frame], onPage=_page_decor)])
+
+    # ── Styles ────────────────────────────────────────────────────────────────
+    def S(name, **kw):
+        defaults = dict(fontName="Helvetica", fontSize=10, leading=14,
+                        textColor=BLACK, alignment=TA_LEFT)
+        defaults.update(kw)
+        return ParagraphStyle(name, **defaults)
+
+    sTitle   = S("sTitle",   fontName="Helvetica-Bold", fontSize=26, leading=32,
+                             textColor=ORANGE, spaceAfter=4)
+    sSubtitle= S("sSub",     fontSize=10, textColor=GRAY_TXT, spaceAfter=2)
+    sH2      = S("sH2",      fontName="Helvetica-Bold", fontSize=13, leading=18,
+                             textColor=BLACK, spaceBefore=14, spaceAfter=6)
+    sH3      = S("sH3",      fontName="Helvetica-Bold", fontSize=10, leading=14,
+                             textColor=GRAY_TXT, spaceBefore=8, spaceAfter=4)
+    sBody    = S("sBody",    fontSize=9.5, leading=14, textColor=BLACK, spaceAfter=4)
+    sCaption = S("sCaption", fontSize=8,  leading=11, textColor=GRAY_TXT, spaceAfter=2)
+    sTH      = S("sTH",      fontName="Helvetica-Bold", fontSize=9, textColor=WHITE,
+                             alignment=TA_CENTER)
+    sTD      = S("sTD",      fontSize=9, leading=13, textColor=BLACK, alignment=TA_LEFT)
+    sTDc     = S("sTDc",     fontSize=9, leading=13, textColor=BLACK, alignment=TA_CENTER)
+    sResult  = S("sResult",  fontName="Helvetica-Bold", fontSize=16, leading=20,
+                             textColor=colors.HexColor(_sentiment_color(current_sentiment)),
+                             spaceAfter=4)
+    sCurrent = S("sCurrent", fontSize=9.5, leading=14, textColor=BLACK, spaceAfter=2)
+
+    def hr(): return HRFlowable(width="100%", thickness=0.8, color=GRAY_LT, spaceAfter=10, spaceBefore=6)
+
+    # ── Aggregate stats ───────────────────────────────────────────────────────
+    all_records = records  # already sorted newest-first from DB
+    total  = len(all_records)
+    n_pos  = sum(1 for r in all_records if r["sentiment"] == "Positive")
+    n_neg  = sum(1 for r in all_records if r["sentiment"] == "Negative")
+    n_neu  = sum(1 for r in all_records if r["sentiment"] == "Neutral")
+    avg_cf = (sum(r.get("confidence", 0) or 0 for r in all_records) / total) if total else 0
+
+    story = []
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # TITLE PAGE BLOCK
+    # ══════════════════════════════════════════════════════════════════════════
+    story.append(Spacer(1, 0.6 * cm))
+    story.append(Paragraph("SentimentAI", sTitle))
+    story.append(Paragraph("Analysis Report",
+        S("sT2", fontName="Helvetica-Bold", fontSize=18, leading=24,
+          textColor=BLACK, spaceAfter=6)))
+    story.append(Paragraph(
+        f"Prepared for: <b>{user_email or 'Guest User'}</b>  ·  "
+        f"Generated: <b>{datetime.now(timezone.utc).strftime('%d %B %Y, %I:%M %p UTC')}</b>",
+        sSubtitle))
+    story.append(Paragraph(
+        "Powered by Logistic Regression + TF-IDF · scikit-learn",
+        S("sPow", fontSize=8, textColor=GRAY_TXT, spaceAfter=10)))
+    story.append(hr())
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECTION 1 — CURRENT ANALYSIS RESULT
+    # ══════════════════════════════════════════════════════════════════════════
+    if current_sentiment and current_text:
+        story.append(Paragraph("Current Analysis", sH2))
+        story.append(KeepTogether([
+            Paragraph(f"{current_sentiment}  —  {int(current_confidence * 100)}% confidence", sResult),
+            Paragraph(
+                "The text conveys an optimistic or satisfied tone." if current_sentiment == "Positive"
+                else "The text conveys a critical or dissatisfied tone." if current_sentiment == "Negative"
+                else "The text appears factual, balanced, or unclear in tone.",
+                sCaption),
+            Spacer(1, 6),
+            Paragraph("<b>Analyzed Text:</b>", sH3),
+            Paragraph(current_text[:2000], sBody),
+        ]))
+        story.append(hr())
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECTION 2 — SUMMARY STATISTICS
+    # ══════════════════════════════════════════════════════════════════════════
+    story.append(Paragraph("Sentiment Distribution Summary", sH2))
+
+    if total == 0:
+        story.append(Paragraph("No analysis history found for this account.", sBody))
+    else:
+        pct = lambda n: f"{round(n / total * 100)}%" if total else "0%"
+        summary_data = [
+            [Paragraph("Metric",    sTH), Paragraph("Count", sTH), Paragraph("Percentage", sTH)],
+            [Paragraph("✓ Positive", S("sPos", fontSize=9, textColor=GREEN)),
+             Paragraph(str(n_pos), sTDc), Paragraph(pct(n_pos), sTDc)],
+            [Paragraph("✗ Negative", S("sNeg", fontSize=9, textColor=RED)),
+             Paragraph(str(n_neg), sTDc), Paragraph(pct(n_neg), sTDc)],
+            [Paragraph("~ Neutral",  S("sNeu", fontSize=9, textColor=AMBER)),
+             Paragraph(str(n_neu), sTDc), Paragraph(pct(n_neu), sTDc)],
+            [Paragraph("<b>Total</b>", S("sTot", fontName="Helvetica-Bold", fontSize=9, textColor=BLACK)),
+             Paragraph(f"<b>{total}</b>", S("sTotV", fontName="Helvetica-Bold", fontSize=9,
+                                            textColor=BLACK, alignment=TA_CENTER)),
+             Paragraph("<b>100%</b>", S("sTotP", fontName="Helvetica-Bold", fontSize=9,
+                                        textColor=BLACK, alignment=TA_CENTER))],
+        ]
+        col_w = [9 * cm, 3.5 * cm, 3.5 * cm]
+        st = Table(summary_data, colWidths=col_w, repeatRows=1)
+        st.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, 0), ORANGE),
+            ("ROWBACKGROUNDS",(0, 1), (-1, -2), [GRAY_BG, WHITE]),
+            ("BACKGROUND",    (0, -1),(-1, -1), colors.HexColor("#f1f5f9")),
+            ("GRID",          (0, 0), (-1, -1), 0.5, GRAY_LT),
+            ("ALIGN",         (1, 0), (-1, -1), "CENTER"),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ("LEFTPADDING",   (0, 0), (0, -1),  10),
+            ("ROWBACKGROUNDS",(0, -1),(-1, -1), [colors.HexColor("#f1f5f9")]),
+        ]))
+        story.append(KeepTogether([st, Spacer(1, 4)]))
+        story.append(Paragraph(
+            f"Average confidence across all analyses: <b>{round(avg_cf * 100)}%</b>",
+            S("sAvg", fontSize=9, textColor=GRAY_TXT, spaceAfter=10)))
+
+    story.append(hr())
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECTION 3 — FULL HISTORY TABLE
+    # ══════════════════════════════════════════════════════════════════════════
+    if all_records:
+        story.append(Paragraph("Complete Analysis History", sH2))
+        story.append(Paragraph(
+            f"Showing all {total} record(s) in reverse chronological order.",
+            sCaption))
+        story.append(Spacer(1, 6))
+
+        # Header row
+        hdr = [
+            Paragraph("#",          sTH),
+            Paragraph("Text",       sTH),
+            Paragraph("Sentiment",  sTH),
+            Paragraph("Confidence", sTH),
+            Paragraph("Date",       sTH),
+        ]
+        rows = [hdr]
+        USABLE_W = W - LMARGIN - RMARGIN
+        col_widths = [
+            0.7  * cm,   # #
+            9.2  * cm,   # text
+            2.6  * cm,   # sentiment
+            2.2  * cm,   # confidence
+            3.0  * cm,   # date
+        ]
+
+        SENT_COLORS = {"Positive": GREEN, "Negative": RED, "Neutral": AMBER}
+
+        for idx, rec in enumerate(all_records, 1):
+            raw_text   = str(rec.get("text", ""))
+            # Wrap at 160 chars to avoid overflow; keep full text in cell via wrapping
+            cell_text  = raw_text[:300] + ("…" if len(raw_text) > 300 else "")
+            sent       = rec.get("sentiment", "")
+            conf_val   = rec.get("confidence") or 0
+            ts         = ""
+            if rec.get("created_at"):
+                try:
+                    ts = rec["created_at"].strftime("%d %b %Y\n%I:%M %p")
+                except Exception:
+                    ts = str(rec["created_at"])
+
+            sc = SENT_COLORS.get(sent, GRAY_TXT)
+            row = [
+                Paragraph(str(idx),   S(f"n{idx}", fontSize=8, textColor=GRAY_TXT, alignment=TA_CENTER)),
+                Paragraph(cell_text,  S(f"t{idx}", fontSize=8.5, leading=12, textColor=BLACK)),
+                Paragraph(sent,       S(f"s{idx}", fontSize=9, fontName="Helvetica-Bold",
+                                        textColor=sc, alignment=TA_CENTER)),
+                Paragraph(f"{round(conf_val * 100)}%",
+                                      S(f"c{idx}", fontSize=9, textColor=GRAY_TXT, alignment=TA_CENTER)),
+                Paragraph(ts,         S(f"d{idx}", fontSize=7.5, leading=11, textColor=GRAY_TXT,
+                                        alignment=TA_CENTER)),
+            ]
+            rows.append(row)
+
+        tbl = Table(rows, colWidths=col_widths, repeatRows=1, splitByRow=True)
+        row_bgs = []
+        for i in range(1, len(rows)):
+            row_bgs.append(("BACKGROUND", (0, i), (-1, i),
+                            GRAY_BG if i % 2 == 1 else WHITE))
+        tbl.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, 0), ORANGE),
+            ("GRID",          (0, 0), (-1, -1), 0.4, GRAY_LT),
+            ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+            ("ALIGN",         (1, 0), (1, -1),  "LEFT"),
+            ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING",   (1, 0), (1, -1),  6),
+            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [GRAY_BG, WHITE]),
+        ] + row_bgs))
+        story.append(tbl)
+        story.append(Spacer(1, 12))
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # CLOSING NOTE
+    # ══════════════════════════════════════════════════════════════════════════
+    story.append(hr())
+    story.append(Paragraph(
+        "This report was generated automatically by SentimentAI. "
+        "Results are based on a Logistic Regression classifier trained on the Twitter Sentiment dataset. "
+        "Confidence scores reflect the model's predicted probability for the assigned class.",
+        S("sNote", fontSize=8, textColor=GRAY_TXT, leading=12)))
+
+    doc.build(story)
+
+
 @app.route("/export-report", methods=["POST"])
 def export_report():
     from io import BytesIO
     from flask import send_file
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import cm
 
-    data       = request.get_json(force=True, silent=True) or {}
-    text       = data.get("text", "N/A")
-    sentiment  = data.get("sentiment", "N/A")
-    
+    data = request.get_json(force=True, silent=True) or {}
+
+    # ── Auth — identify user from JWT or body ─────────────────────────────────
+    jwt_email = verify_token()
+    raw_email = (jwt_email if jwt_email and jwt_email != "__expired__"
+                 else data.get("email", ""))
+    email = sanitize_email(raw_email) if raw_email else None
+
+    # ── Current single-analysis context ──────────────────────────────────────
+    current_text = str(data.get("text", "") or "")
+    current_sentiment = str(data.get("sentiment", "") or "")
     try:
-        confidence = float(data.get("confidence", 0) or 0.0)
+        current_confidence = float(data.get("confidence", 0) or 0.0)
     except (TypeError, ValueError):
-        confidence = 0.0
+        current_confidence = 0.0
 
-    try:
-        pos = int(data.get("positive_count", 0) or 0)
-    except (TypeError, ValueError):
-        pos = 0
-
-    try:
-        neg = int(data.get("negative_count", 0) or 0)
-    except (TypeError, ValueError):
-        neg = 0
-
+    # ── Fetch ALL history records (no limit) ──────────────────────────────────
+    records = []
+    if email:
+        try:
+            records = list(
+                collection.find({"user_email": email})
+                          .sort("created_at", -1)
+            )
+        except PyMongoError as e:
+            print(f"[PDF EXPORT] DB error: {e}")
+            # continue with empty records rather than crashing
 
     buf = BytesIO()
     try:
-        doc   = SimpleDocTemplate(buf, pagesize=A4,
-                                   leftMargin=2*cm, rightMargin=2*cm,
-                                   topMargin=2*cm, bottomMargin=2*cm)
-        story = []
-
-        story.append(Paragraph("SentimentAI — Analysis Report",
-            ParagraphStyle("title", fontSize=20, fontName="Helvetica-Bold",
-                           textColor=colors.HexColor("#f97316"), spaceAfter=6)))
-        story.append(Paragraph(
-            f"Generated: {datetime.now(timezone.utc).strftime('%d %b %Y, %I:%M %p UTC')}",
-            ParagraphStyle("sub", fontSize=9, textColor=colors.grey, spaceAfter=20)))
-        story.append(Paragraph("Sentiment Result",
-            ParagraphStyle("h2", fontSize=13, fontName="Helvetica-Bold", spaceAfter=8)))
-        story.append(Paragraph(
-            f"<font color='#{('22c55e' if sentiment == 'Positive' else 'ef4444')}'>"
-            f"{sentiment}</font>  —  {int(confidence*100)}% confident",
-            ParagraphStyle("result", fontSize=14, fontName="Helvetica-Bold", spaceAfter=16)))
-        story.append(Paragraph("Analyzed Text",
-            ParagraphStyle("h2", fontSize=13, fontName="Helvetica-Bold", spaceAfter=8)))
-        story.append(Paragraph(text[:1000],
-            ParagraphStyle("body", fontSize=10, leading=14, spaceAfter=20)))
-
-        if pos + neg > 0:
-            story.append(Paragraph("Session Summary",
-                ParagraphStyle("h2", fontSize=13, fontName="Helvetica-Bold", spaceAfter=8)))
-            table = Table(
-                [["Sentiment", "Count", "Percentage"],
-                 ["Positive", str(pos), f"{round(pos/(pos+neg)*100)}%"],
-                 ["Negative", str(neg), f"{round(neg/(pos+neg)*100)}%"],
-                 ["Total",    str(pos+neg), "100%"]],
-                colWidths=[6*cm, 4*cm, 4*cm])
-            table.setStyle(TableStyle([
-                ("BACKGROUND",     (0,0), (-1,0), colors.HexColor("#f97316")),
-                ("TEXTCOLOR",      (0,0), (-1,0), colors.white),
-                ("FONTNAME",       (0,0), (-1,0), "Helvetica-Bold"),
-                ("FONTSIZE",       (0,0), (-1,-1), 10),
-                ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.HexColor("#f9fafb"), colors.white]),
-                ("GRID",           (0,0), (-1,-1), 0.5, colors.HexColor("#e5e7eb")),
-                ("ALIGN",          (1,0), (-1,-1), "CENTER"),
-                ("TOPPADDING",     (0,0), (-1,-1), 6),
-                ("BOTTOMPADDING",  (0,0), (-1,-1), 6),
-            ]))
-            story.append(table)
-            story.append(Spacer(1, 16))
-
-        story.append(Paragraph("Powered by SentimentAI · Logistic Regression + TF-IDF",
-            ParagraphStyle("footer", fontSize=8, textColor=colors.grey)))
-
-        doc.build(story)
-    except Exception:
+        _build_pdf(buf, records, current_text, current_sentiment, current_confidence, email)
+    except Exception as e:
+        print(f"[PDF EXPORT] Build error: {type(e).__name__}: {e}")
         buf.close()
-        raise
+        return err("Could not generate PDF report. Please try again.", 500)
+
     buf.seek(0)
+    filename = f"sentimentai_report_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}.pdf"
     return send_file(buf, mimetype="application/pdf",
-                     as_attachment=True, download_name="sentiment_report.pdf")
+                     as_attachment=True, download_name=filename)
 
 
 if __name__ == "__main__":

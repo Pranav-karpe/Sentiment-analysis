@@ -26,6 +26,12 @@ export default function Dashboard({ dark, setDark }) {
   const [taFocused,    setTaFocused]    = useState(false);
   const textareaRef = useRef(null);
 
+  // Image OCR workflow state
+  const [imagePreview,   setImagePreview]   = useState(null);  // { url, name, size }
+  const [ocrLoading,     setOcrLoading]     = useState(false);
+  const [ocrText,        setOcrText]        = useState("");
+  const [ocrError,       setOcrError]       = useState("");
+
   const sendSupport = async () => {
     if (!supportMsg.trim()) return;
     setSupportLoading(true);
@@ -58,7 +64,33 @@ export default function Dashboard({ dark, setDark }) {
   const analyzeFile = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    e.target.value = "";
+
+    const isImage = /\.(jpe?g|png)$/i.test(file.name);
+    if (isImage) {
+      // Image workflow: show preview then run OCR
+      const url = URL.createObjectURL(file);
+      setImagePreview({ url, name: file.name, size: file.size });
+      setOcrText(""); setOcrError(""); setResult(null); setError("");
+      setOcrLoading(true);
+      const fd = new FormData();
+      fd.append("file", file);
+      try {
+        const res = await axios.post(`${API}/ocr-image`, fd);
+        if (res.data.success) {
+          setOcrText(res.data.text);
+        } else {
+          setOcrError(res.data.error || "OCR failed.");
+        }
+      } catch (ex) {
+        setOcrError(ex.response?.data?.error || "Unable to extract text from image.");
+      } finally { setOcrLoading(false); }
+      return;
+    }
+
+    // Non-image files: existing flow
     setError(""); setResult(null); setLoading(true);
+    setImagePreview(null); setOcrText(""); setOcrError("");
     const fd = new FormData();
     fd.append("file", file);
     fd.append("email", user?.email ?? "");
@@ -69,18 +101,39 @@ export default function Dashboard({ dark, setDark }) {
       setText(res.data.text || "");
     } catch (ex) {
       setError(ex.response?.data?.error || "File analysis failed.");
-    } finally { setLoading(false); e.target.value = ""; }
+    } finally { setLoading(false); }
+  };
+
+  const analyzeOcrText = async () => {
+    if (!ocrText.trim()) return;
+    setText(ocrText);
+    setLoading(true); setResult(null); setError("");
+    try {
+      const res = await axios.post(`${API}/predict`,
+        { text: ocrText, email: user?.email ?? "" }, authHeaders());
+      setResult(res.data);
+    } catch (e) {
+      if (e.response?.data?.error === "Session expired. Please log in again.") { handleLogout(); return; }
+      setError(e.response?.data?.error || "Sentiment analysis failed.");
+    } finally { setLoading(false); }
+  };
+
+  const clearImage = () => {
+    if (imagePreview?.url) URL.revokeObjectURL(imagePreview.url);
+    setImagePreview(null); setOcrText(""); setOcrError("");
   };
 
   const exportPDF = async () => {
     try {
-      const res = await axios.post(`${API}/export-report`,
+      const res = await axios.post(
+        `${API}/export-report`,
         { text, sentiment: result?.sentiment, confidence: result?.confidence,
-          positive_count: 0, negative_count: 0 },
-        { ...authHeaders(), responseType: "blob" });
+          email: user?.email ?? "" },
+        { ...authHeaders(), responseType: "blob" }
+      );
       const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
       const a = document.createElement("a"); a.href = url;
-      a.download = "sentiment_report.pdf"; a.click();
+      a.download = `sentimentai_report_${Date.now()}.pdf`; a.click();
       URL.revokeObjectURL(url);
     } catch { setError("Could not generate PDF."); }
   };
@@ -271,6 +324,62 @@ export default function Dashboard({ dark, setDark }) {
               className={`w-full bg-transparent outline-none resize-none text-base leading-relaxed text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 transition-all duration-200 rounded-lg textarea-glow${taFocused ? " textarea-focused" : ""}`}
             />
           </div>
+
+          {/* IMAGE PREVIEW + OCR — inside card, above footer */}
+          {imagePreview && (
+            <div className="mx-5 mb-4 rounded-xl border border-gray-200 dark:border-white/10 overflow-hidden">
+              {/* File info row */}
+              <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-white/[0.03] border-b border-gray-200 dark:border-white/10">
+                <div className="flex items-center gap-2 min-w-0">
+                  <svg className="w-4 h-4 text-orange-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate max-w-[220px]">{imagePreview.name}</span>
+                  <span className="text-xs text-gray-400 shrink-0">· {(imagePreview.size / 1024).toFixed(1)} KB</span>
+                </div>
+                <button onClick={clearImage} className="w-6 h-6 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/10 transition-colors text-xs shrink-0">✕</button>
+              </div>
+              {/* Thumbnail */}
+              <img src={imagePreview.url} alt="preview" className="w-full max-h-44 object-contain bg-gray-50 dark:bg-white/[0.02]" />
+              {/* OCR spinner */}
+              {ocrLoading && (
+                <div className="flex items-center gap-2.5 px-4 py-3 border-t border-gray-200 dark:border-white/10 text-xs text-gray-500 dark:text-gray-400">
+                  <svg className="w-3.5 h-3.5 animate-spin text-orange-500 shrink-0" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                  </svg>
+                  Extracting text from image...
+                </div>
+              )}
+              {/* OCR error */}
+              {ocrError && !ocrLoading && (
+                <div className="flex items-start gap-2.5 px-4 py-3 border-t border-gray-200 dark:border-white/10 bg-red-50 dark:bg-red-500/10">
+                  <svg className="w-3.5 h-3.5 shrink-0 mt-0.5 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-5.25a.75.75 0 001.5 0v-4a.75.75 0 00-1.5 0v4zm.75-7a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" /></svg>
+                  <p className="text-xs text-red-600 dark:text-red-400 leading-relaxed">{ocrError}</p>
+                </div>
+              )}
+              {/* Extracted text editor */}
+              {ocrText && !ocrLoading && (
+                <div className="px-4 pb-4 pt-3 border-t border-gray-200 dark:border-white/10">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-2">Extracted Text — edit if needed</p>
+                  <textarea
+                    value={ocrText}
+                    onChange={(e) => setOcrText(e.target.value)}
+                    rows={4}
+                    className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-white outline-none focus:border-orange-500 transition-colors resize-none leading-relaxed"
+                  />
+                  <button
+                    onClick={analyzeOcrText}
+                    disabled={loading || !ocrText.trim()}
+                    className="mt-2.5 w-full flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-semibold bg-orange-500 hover:bg-orange-600 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-all duration-150 btn-glow">
+                    {loading
+                      ? (<><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>Analyzing...</>)
+                      : "Analyze Extracted Text"
+                    }
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/[0.02]">
             <div className="flex items-center gap-3">
               <span className="text-xs text-gray-400 dark:text-gray-600 font-mono">{text.length} chars</span>
@@ -282,9 +391,9 @@ export default function Dashboard({ dark, setDark }) {
             </div>
             <div className="flex items-center gap-3">
               {text.length > 0 && (
-                <button onClick={() => { setText(""); setResult(null); setError(""); }} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Clear</button>
+                <button onClick={() => { setText(""); setResult(null); setError(""); clearImage(); }} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Clear</button>
               )}
-              <button onClick={analyze} disabled={loading || !text.trim()}
+              <button onClick={analyze} disabled={loading || ocrLoading || !text.trim()}
                 className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold bg-orange-500 hover:bg-orange-600 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-all duration-150 btn-glow">
                 {loading
                   ? (<><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>Analyzing...</>)
@@ -311,6 +420,13 @@ export default function Dashboard({ dark, setDark }) {
                 <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-1">Analysis Result</p>
                 <p className={`text-3xl font-extrabold tracking-tight ${sentimentColor}`}>
                   {result.sentiment === "Positive" ? "😊 Positive" : result.sentiment === "Negative" ? "😞 Negative" : "😐 Neutral"}
+                </p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                  {result.sentiment === "Positive"
+                    ? "The text conveys an optimistic or satisfied tone."
+                    : result.sentiment === "Negative"
+                    ? "The text conveys a critical or dissatisfied tone."
+                    : "The text appears factual, balanced, or unclear in tone."}
                 </p>
                 {result.confidence && (
                   <div className="mt-2 flex items-center gap-2">
