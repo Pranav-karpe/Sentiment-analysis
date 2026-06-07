@@ -25,20 +25,19 @@ except ImportError:
 
 
 # ── OCR engine setup ─────────────────────────────────────────────────────────
-# Tesseract: binary path resolved at startup (cheap — just a shutil.which call).
-# EasyOCR/Torch: NOT imported or loaded at startup. Loading them costs ~300 MB
-# RAM (PyTorch + model weights) which exceeds Render Free Tier (512 MB) before
-# Flask can even bind to a port. They are lazy-loaded on the first OCR request.
+# Tesseract is the only OCR engine. It is a system binary (~15 MB RAM as a
+# subprocess), not a Python model. On Render it is installed via render.yaml
+# buildCommand: apt-get install -y tesseract-ocr
+# On Windows (local dev) it must be installed from https://github.com/UB-Mannheim/tesseract/wiki
 
 import shutil as _shutil
 
 TESSERACT_AVAILABLE = False
-EASYOCR_AVAILABLE   = False  # True if easyocr package is installed
-_easyocr_reader     = None   # populated lazily on first image OCR call
 
 try:
     import pytesseract as _pytesseract
 
+    # Priority: env var TESSERACT_CMD → PATH → Windows default install path
     _tess_cmd = os.getenv("TESSERACT_CMD", "").strip()
     if _tess_cmd and os.path.isfile(_tess_cmd):
         _pytesseract.pytesseract.tesseract_cmd = _tess_cmd
@@ -60,28 +59,7 @@ try:
 
 except Exception as _tess_err:
     print(f"[OCR] Tesseract unavailable: {type(_tess_err).__name__}: {_tess_err}")
-    # Only check if the package is installed — do NOT import it yet.
-    # NOTE: easyocr requires PyTorch (~380 MB RAM). On Render Free Tier (512 MB)
-    # this will OOM-kill the worker on the first OCR request. Install Tesseract
-    # via the Render build command instead: apt-get install -y tesseract-ocr
-    import importlib.util as _ilu
-    if _ilu.find_spec("easyocr") is not None:
-        EASYOCR_AVAILABLE = True
-        print("[OCR] EasyOCR package found — will load lazily on first image request")
-        print("[OCR] WARNING: EasyOCR+PyTorch requires ~380 MB RAM. May OOM on Render Free Tier.")
-    else:
-        print("[OCR] Neither Tesseract nor EasyOCR available. Image upload will return an error.")
-
-
-def _get_easyocr_reader():
-    """Lazy-load EasyOCR on first call; return cached reader on subsequent calls."""
-    global _easyocr_reader
-    if _easyocr_reader is None:
-        print("[OCR] Loading EasyOCR model (first request — this may take a moment)...")
-        import easyocr as _easyocr
-        _easyocr_reader = _easyocr.Reader(["en"], gpu=False, verbose=False)
-        print("[OCR] EasyOCR model loaded ✓")
-    return _easyocr_reader
+    print("[OCR] Image uploads will return an error. On Render, ensure render.yaml buildCommand includes: apt-get install -y tesseract-ocr")
 
 # ── Flask app ─────────────────────────────────────────────────────────────────
 app = Flask(__name__)
@@ -542,93 +520,68 @@ def home():
 
 def _preprocess_image(img):
     """
-    Convert PIL image to a cleaned grayscale version for better OCR accuracy.
-    - Grayscale removes colour noise
-    - Resize if too small (Tesseract struggles below ~300px wide)
-    - Convert back to RGB so both Tesseract and EasyOCR accept it
+    Prepare a PIL image for Tesseract OCR:
+    - Convert to greyscale (removes colour noise)
+    - Upscale if too narrow (Tesseract accuracy drops below ~600px wide)
+    - Light sharpening for compressed JPEGs
+    - Return as RGB so pytesseract accepts it
     """
-    from PIL import ImageFilter, ImageOps
-    # Convert to greyscale
+    from PIL import ImageFilter
     img = img.convert("L")
-    # Upscale small images (tweet screenshots are often 600-800px wide; tiny images fail)
     if img.width < 600:
         scale = max(2, 600 // img.width)
-        img = img.resize((img.width * scale, img.height * scale),
-                         resample=getattr(__import__("PIL").Image, "LANCZOS", 1))
-    # Sharpen slightly to improve edge definition on compressed JPEGs
+        img = img.resize(
+            (img.width * scale, img.height * scale),
+            resample=getattr(__import__("PIL").Image, "LANCZOS", 1)
+        )
     img = img.filter(ImageFilter.SHARPEN)
-    # Convert to RGB for compatibility with both engines
     return img.convert("RGB")
 
 
 def _run_ocr(image_bytes):
     """
-    Return (text, error_msg).
-    text is None on failure; error_msg is None on success.
-    Tries Tesseract first, then EasyOCR, then returns a specific error.
+    Extract text from image bytes using Tesseract.
+    Returns (text, error_msg). On success text is a str and error_msg is None.
+    On failure text is None and error_msg is a user-facing string.
     """
     import io
     from PIL import Image
 
-    # Decode image
+    if not TESSERACT_AVAILABLE:
+        return None, (
+            "OCR is not available on this server. "
+            "Please copy the text manually and paste it into the text box."
+        )
+
     try:
         img = Image.open(io.BytesIO(image_bytes))
-        img.verify()                       # catch corrupt files early
-        img = Image.open(io.BytesIO(image_bytes))  # re-open after verify
+        img.verify()
+        img = Image.open(io.BytesIO(image_bytes))  # re-open: verify() consumes the stream
     except Exception as e:
         print(f"[OCR] Image decode failed: {type(e).__name__}: {e}")
         return None, f"Could not read the image file ({type(e).__name__}). Make sure the file is a valid PNG or JPG."
 
     preprocessed = _preprocess_image(img)
+    try:
+        # PSM 6: single uniform block of text -- best for screenshots and scans
+        text = _pytesseract.image_to_string(preprocessed, config="--psm 6 --oem 3").strip()
+        if text:
+            print(f"[OCR] Tesseract extracted {len(text)} chars")
+            return text, None
+        # Second pass on raw image in case preprocessing reduced accuracy
+        text = _pytesseract.image_to_string(img, config="--psm 6 --oem 3").strip()
+        if text:
+            print(f"[OCR] Tesseract extracted {len(text)} chars (raw image)")
+            return text, None
+        print("[OCR] Tesseract returned empty string")
+    except Exception as e:
+        print(f"[OCR] Tesseract error: {type(e).__name__}: {e}")
+        return None, "OCR failed while processing the image. Please try a clearer image."
 
-    # ── Engine 1: Tesseract ─────────────────────────────────────────────
-    if TESSERACT_AVAILABLE:
-        try:
-            # PSM 6 = assume a uniform block of text (best for screenshots / tweets)
-            text = _pytesseract.image_to_string(
-                preprocessed,
-                config="--psm 6 --oem 3"
-            ).strip()
-            if text:
-                print(f"[OCR] Tesseract extracted {len(text)} chars")
-                return text, None
-            # Empty result — try without preprocessing (sometimes raw image is better)
-            text = _pytesseract.image_to_string(img, config="--psm 6 --oem 3").strip()
-            if text:
-                print(f"[OCR] Tesseract extracted {len(text)} chars (raw image)")
-                return text, None
-            print("[OCR] Tesseract returned empty string")
-        except Exception as e:
-            print(f"[OCR] Tesseract extraction error: {type(e).__name__}: {e}")
-            # Don't return yet — fall through to EasyOCR
-
-    # ── Engine 2: EasyOCR (lazy-loaded on first call) ──────────────────
-    if EASYOCR_AVAILABLE:
-        try:
-            import numpy as np
-            reader = _get_easyocr_reader()
-            img_array = np.array(preprocessed)
-            results = reader.readtext(img_array, detail=0, paragraph=True)
-            text = " ".join(results).strip()
-            if text:
-                print(f"[OCR] EasyOCR extracted {len(text)} chars")
-                return text, None
-            print("[OCR] EasyOCR returned empty result")
-        except Exception as e:
-            print(f"[OCR] EasyOCR extraction error: {type(e).__name__}: {e}")
-
-    # ── Nothing worked ──────────────────────────────────────────────────
-    if not TESSERACT_AVAILABLE and not EASYOCR_AVAILABLE:
-        return None, (
-            "No OCR engine is available on this server. "
-            "Tesseract is not installed or could not be found. "
-            "Please copy the text manually and paste it into the text box."
-        )
     return None, (
         "No text could be extracted from this image. "
         "Try uploading a clearer, higher-resolution image with visible text."
     )
-
 
 @app.route("/ocr-image", methods=["POST"])
 def ocr_image():
