@@ -14,4 +14,5 @@ pymupdf
 certifi
 gunicorn
 python-dotenv
-easyocr
+# easyocr removed — uses PyTorch (~380 MB RAM), incompatible with Render Free Tier 512 MB.
+# Tesseract is installed via the Render build command: apt-get install -y tesseract-ocr

@@ -25,63 +25,63 @@ except ImportError:
 
 
 # ── OCR engine setup ─────────────────────────────────────────────────────────
-#
-# Root cause of previous failure:
-#   pytesseract.tesseract_cmd defaults to the bare string "tesseract".
-#   Flask's subprocess environment on Windows does NOT inherit the user PATH,
-#   so "tesseract" cannot be resolved even though `tesseract --version` works
-#   in a terminal.  The fix is to resolve the real binary path at import time
-#   using shutil.which() (which searches PATH as the process sees it) and then
-#   fall back to the known Windows install location.
-#
-# Priority: env var → shutil.which → Windows default path → EasyOCR → error
+# Tesseract: binary path resolved at startup (cheap — just a shutil.which call).
+# EasyOCR/Torch: NOT imported or loaded at startup. Loading them costs ~300 MB
+# RAM (PyTorch + model weights) which exceeds Render Free Tier (512 MB) before
+# Flask can even bind to a port. They are lazy-loaded on the first OCR request.
 
 import shutil as _shutil
 
 TESSERACT_AVAILABLE = False
-EASYOCR_AVAILABLE   = False
-_easyocr_reader     = None
+EASYOCR_AVAILABLE   = False  # True if easyocr package is installed
+_easyocr_reader     = None   # populated lazily on first image OCR call
 
 try:
     import pytesseract as _pytesseract
 
-    # 1. Explicit override from environment (deployment / CI)
     _tess_cmd = os.getenv("TESSERACT_CMD", "").strip()
-
     if _tess_cmd and os.path.isfile(_tess_cmd):
         _pytesseract.pytesseract.tesseract_cmd = _tess_cmd
         print(f"[OCR] Tesseract path from TESSERACT_CMD env: {_tess_cmd}")
-
     else:
-        # 2. Resolve via PATH (works if tesseract is on PATH in this process)
         _which = _shutil.which("tesseract")
         if _which:
             _pytesseract.pytesseract.tesseract_cmd = _which
             print(f"[OCR] Tesseract found via PATH: {_which}")
-
         elif os.name == "nt":
-            # 3. Windows hard-coded fallback
             _win_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
             if os.path.isfile(_win_path):
                 _pytesseract.pytesseract.tesseract_cmd = _win_path
                 print(f"[OCR] Tesseract found at Windows default path: {_win_path}")
 
-    # Verify the binary is actually callable with the path now set
     _ver = _pytesseract.get_tesseract_version()
     TESSERACT_AVAILABLE = True
     print(f"[OCR] Tesseract ready ✓  (cmd={_pytesseract.pytesseract.tesseract_cmd}, version={_ver})")
 
 except Exception as _tess_err:
     print(f"[OCR] Tesseract unavailable: {type(_tess_err).__name__}: {_tess_err}")
-    # Fallback: try EasyOCR (pure-Python, no binary needed — good for deployed servers)
-    try:
+    # Only check if the package is installed — do NOT import it yet.
+    # NOTE: easyocr requires PyTorch (~380 MB RAM). On Render Free Tier (512 MB)
+    # this will OOM-kill the worker on the first OCR request. Install Tesseract
+    # via the Render build command instead: apt-get install -y tesseract-ocr
+    import importlib.util as _ilu
+    if _ilu.find_spec("easyocr") is not None:
+        EASYOCR_AVAILABLE = True
+        print("[OCR] EasyOCR package found — will load lazily on first image request")
+        print("[OCR] WARNING: EasyOCR+PyTorch requires ~380 MB RAM. May OOM on Render Free Tier.")
+    else:
+        print("[OCR] Neither Tesseract nor EasyOCR available. Image upload will return an error.")
+
+
+def _get_easyocr_reader():
+    """Lazy-load EasyOCR on first call; return cached reader on subsequent calls."""
+    global _easyocr_reader
+    if _easyocr_reader is None:
+        print("[OCR] Loading EasyOCR model (first request — this may take a moment)...")
         import easyocr as _easyocr
         _easyocr_reader = _easyocr.Reader(["en"], gpu=False, verbose=False)
-        EASYOCR_AVAILABLE = True
-        print("[OCR] EasyOCR ready as fallback ✓")
-    except Exception as _easy_err:
-        print(f"[OCR] EasyOCR also unavailable: {type(_easy_err).__name__}: {_easy_err}")
-        print("[OCR] No OCR engine available. Image upload will return an error to the user.")
+        print("[OCR] EasyOCR model loaded ✓")
+    return _easyocr_reader
 
 # ── Flask app ─────────────────────────────────────────────────────────────────
 app = Flask(__name__)
@@ -602,12 +602,13 @@ def _run_ocr(image_bytes):
             print(f"[OCR] Tesseract extraction error: {type(e).__name__}: {e}")
             # Don't return yet — fall through to EasyOCR
 
-    # ── Engine 2: EasyOCR ──────────────────────────────────────────────
-    if EASYOCR_AVAILABLE and _easyocr_reader is not None:
+    # ── Engine 2: EasyOCR (lazy-loaded on first call) ──────────────────
+    if EASYOCR_AVAILABLE:
         try:
             import numpy as np
+            reader = _get_easyocr_reader()
             img_array = np.array(preprocessed)
-            results = _easyocr_reader.readtext(img_array, detail=0, paragraph=True)
+            results = reader.readtext(img_array, detail=0, paragraph=True)
             text = " ".join(results).strip()
             if text:
                 print(f"[OCR] EasyOCR extracted {len(text)} chars")
