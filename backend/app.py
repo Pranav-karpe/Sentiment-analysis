@@ -24,23 +24,64 @@ except ImportError:
     pass
 
 
-# ── Tesseract — auto-detect; env var overrides; Windows fallback ──────────────
+# ── OCR engine setup ─────────────────────────────────────────────────────────
+#
+# Root cause of previous failure:
+#   pytesseract.tesseract_cmd defaults to the bare string "tesseract".
+#   Flask's subprocess environment on Windows does NOT inherit the user PATH,
+#   so "tesseract" cannot be resolved even though `tesseract --version` works
+#   in a terminal.  The fix is to resolve the real binary path at import time
+#   using shutil.which() (which searches PATH as the process sees it) and then
+#   fall back to the known Windows install location.
+#
+# Priority: env var → shutil.which → Windows default path → EasyOCR → error
+
+import shutil as _shutil
+
 TESSERACT_AVAILABLE = False
+EASYOCR_AVAILABLE   = False
+_easyocr_reader     = None
+
 try:
-    import pytesseract
-    _tess_env = os.getenv("TESSERACT_CMD")
-    if _tess_env:
-        pytesseract.pytesseract.tesseract_cmd = _tess_env
-    elif os.name == "nt":
-        _win_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-        if os.path.isfile(_win_path):
-            pytesseract.pytesseract.tesseract_cmd = _win_path
-    # Verify tesseract binary is actually callable
-    pytesseract.get_tesseract_version()
+    import pytesseract as _pytesseract
+
+    # 1. Explicit override from environment (deployment / CI)
+    _tess_cmd = os.getenv("TESSERACT_CMD", "").strip()
+
+    if _tess_cmd and os.path.isfile(_tess_cmd):
+        _pytesseract.pytesseract.tesseract_cmd = _tess_cmd
+        print(f"[OCR] Tesseract path from TESSERACT_CMD env: {_tess_cmd}")
+
+    else:
+        # 2. Resolve via PATH (works if tesseract is on PATH in this process)
+        _which = _shutil.which("tesseract")
+        if _which:
+            _pytesseract.pytesseract.tesseract_cmd = _which
+            print(f"[OCR] Tesseract found via PATH: {_which}")
+
+        elif os.name == "nt":
+            # 3. Windows hard-coded fallback
+            _win_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+            if os.path.isfile(_win_path):
+                _pytesseract.pytesseract.tesseract_cmd = _win_path
+                print(f"[OCR] Tesseract found at Windows default path: {_win_path}")
+
+    # Verify the binary is actually callable with the path now set
+    _ver = _pytesseract.get_tesseract_version()
     TESSERACT_AVAILABLE = True
-    print("[OCR] Tesseract available ✓")
+    print(f"[OCR] Tesseract ready ✓  (cmd={_pytesseract.pytesseract.tesseract_cmd}, version={_ver})")
+
 except Exception as _tess_err:
-    print(f"[OCR] Tesseract unavailable: {_tess_err}")
+    print(f"[OCR] Tesseract unavailable: {type(_tess_err).__name__}: {_tess_err}")
+    # Fallback: try EasyOCR (pure-Python, no binary needed — good for deployed servers)
+    try:
+        import easyocr as _easyocr
+        _easyocr_reader = _easyocr.Reader(["en"], gpu=False, verbose=False)
+        EASYOCR_AVAILABLE = True
+        print("[OCR] EasyOCR ready as fallback ✓")
+    except Exception as _easy_err:
+        print(f"[OCR] EasyOCR also unavailable: {type(_easy_err).__name__}: {_easy_err}")
+        print("[OCR] No OCR engine available. Image upload will return an error to the user.")
 
 # ── Flask app ─────────────────────────────────────────────────────────────────
 app = Flask(__name__)
@@ -499,21 +540,93 @@ def home():
 # FILE UPLOAD
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _preprocess_image(img):
+    """
+    Convert PIL image to a cleaned grayscale version for better OCR accuracy.
+    - Grayscale removes colour noise
+    - Resize if too small (Tesseract struggles below ~300px wide)
+    - Convert back to RGB so both Tesseract and EasyOCR accept it
+    """
+    from PIL import ImageFilter, ImageOps
+    # Convert to greyscale
+    img = img.convert("L")
+    # Upscale small images (tweet screenshots are often 600-800px wide; tiny images fail)
+    if img.width < 600:
+        scale = max(2, 600 // img.width)
+        img = img.resize((img.width * scale, img.height * scale),
+                         resample=getattr(__import__("PIL").Image, "LANCZOS", 1))
+    # Sharpen slightly to improve edge definition on compressed JPEGs
+    img = img.filter(ImageFilter.SHARPEN)
+    # Convert to RGB for compatibility with both engines
+    return img.convert("RGB")
+
+
 def _run_ocr(image_bytes):
-    """Return (text, error_msg). text is None on failure, error_msg is None on success."""
-    if not TESSERACT_AVAILABLE:
-        return None, "Tesseract OCR is not installed on this server. Please extract the text manually and paste it into the text box."
+    """
+    Return (text, error_msg).
+    text is None on failure; error_msg is None on success.
+    Tries Tesseract first, then EasyOCR, then returns a specific error.
+    """
+    import io
+    from PIL import Image
+
+    # Decode image
     try:
-        from PIL import Image
-        import io
         img = Image.open(io.BytesIO(image_bytes))
-        text = pytesseract.image_to_string(img).strip()
-        if not text:
-            return None, "No text could be extracted from this image. Try a clearer, higher-resolution image."
-        return text, None
+        img.verify()                       # catch corrupt files early
+        img = Image.open(io.BytesIO(image_bytes))  # re-open after verify
     except Exception as e:
-        print(f"[OCR ERROR] {type(e).__name__}: {e}")
-        return None, "Unable to extract text from image. Ensure the image contains clear, readable text."
+        print(f"[OCR] Image decode failed: {type(e).__name__}: {e}")
+        return None, f"Could not read the image file ({type(e).__name__}). Make sure the file is a valid PNG or JPG."
+
+    preprocessed = _preprocess_image(img)
+
+    # ── Engine 1: Tesseract ─────────────────────────────────────────────
+    if TESSERACT_AVAILABLE:
+        try:
+            # PSM 6 = assume a uniform block of text (best for screenshots / tweets)
+            text = _pytesseract.image_to_string(
+                preprocessed,
+                config="--psm 6 --oem 3"
+            ).strip()
+            if text:
+                print(f"[OCR] Tesseract extracted {len(text)} chars")
+                return text, None
+            # Empty result — try without preprocessing (sometimes raw image is better)
+            text = _pytesseract.image_to_string(img, config="--psm 6 --oem 3").strip()
+            if text:
+                print(f"[OCR] Tesseract extracted {len(text)} chars (raw image)")
+                return text, None
+            print("[OCR] Tesseract returned empty string")
+        except Exception as e:
+            print(f"[OCR] Tesseract extraction error: {type(e).__name__}: {e}")
+            # Don't return yet — fall through to EasyOCR
+
+    # ── Engine 2: EasyOCR ──────────────────────────────────────────────
+    if EASYOCR_AVAILABLE and _easyocr_reader is not None:
+        try:
+            import numpy as np
+            img_array = np.array(preprocessed)
+            results = _easyocr_reader.readtext(img_array, detail=0, paragraph=True)
+            text = " ".join(results).strip()
+            if text:
+                print(f"[OCR] EasyOCR extracted {len(text)} chars")
+                return text, None
+            print("[OCR] EasyOCR returned empty result")
+        except Exception as e:
+            print(f"[OCR] EasyOCR extraction error: {type(e).__name__}: {e}")
+
+    # ── Nothing worked ──────────────────────────────────────────────────
+    if not TESSERACT_AVAILABLE and not EASYOCR_AVAILABLE:
+        return None, (
+            "No OCR engine is available on this server. "
+            "Tesseract is not installed or could not be found. "
+            "Please copy the text manually and paste it into the text box."
+        )
+    return None, (
+        "No text could be extracted from this image. "
+        "Try uploading a clearer, higher-resolution image with visible text."
+    )
 
 
 @app.route("/ocr-image", methods=["POST"])

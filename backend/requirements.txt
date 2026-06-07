@@ -14,3 +14,4 @@ pymupdf
 certifi
 gunicorn
 python-dotenv
+easyocr
