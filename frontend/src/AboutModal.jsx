@@ -11,9 +11,9 @@ const FEATURES = [
   {
     icon: "📁",
     color: "blue",
-    title: "Multi-Format File Upload",
-    desc: "Upload .txt, .pdf, or image files (.jpg, .jpeg, .png). Images are processed via Tesseract OCR to extract text before analysis.",
-    tags: [".txt", ".pdf", ".jpg / .png", "OCR"],
+    title: "File Upload",
+    desc: "Upload .txt or .pdf files. Text is extracted automatically and analyzed instantly.",
+    tags: [".txt", ".pdf"],
   },
   {
     icon: "🔐",
@@ -148,7 +148,7 @@ export default function AboutModal({ onClose }) {
 
           {/* Tech stack pills */}
           <div className="flex flex-wrap gap-2 mt-4">
-            {["React + Vite", "Flask (Python)", "MongoDB Atlas", "Logistic Regression", "TF-IDF", "JWT Auth", "Tesseract OCR", "ReportLab PDF", "Recharts"].map((t) => (
+            {["React + Vite", "Flask (Python)", "MongoDB Atlas", "Logistic Regression", "TF-IDF", "JWT Auth", "ReportLab PDF", "Recharts"].map((t) => (
               <span key={t} className="px-2.5 py-1 rounded-lg text-xs font-medium bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-white/10">
                 {t}
               </span>

@@ -32,7 +32,7 @@ export default function AboutPage() {
             { label: "Database", value: "MongoDB Atlas (cloud)" },
             { label: "ML Model", value: "Logistic Regression + TF-IDF" },
             { label: "Auth", value: "JWT tokens + Werkzeug password hashing" },
-            { label: "File Processing", value: "PyMuPDF (PDF) + Tesseract OCR (images)" },
+            { label: "File Processing", value: "PyMuPDF (PDF text extraction)" },
             { label: "PDF Export", value: "ReportLab" },
             { label: "Charts", value: "Recharts (React)" },
           ].map(({ label, value }) => (
@@ -48,7 +48,7 @@ export default function AboutPage() {
         <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-3">Features</h2>
         <ul className="list-disc pl-6 space-y-2">
           <li>Sentiment analysis with confidence score (Positive / Negative / Neutral)</li>
-          <li>File upload: .txt, .pdf, and image files with OCR</li>
+          <li>File upload: .txt and .pdf files</li>
           <li>User authentication with JWT and 48-hour session management</li>
           <li>Analysis history with search, filter, and delete</li>
           <li>Analytics dashboard with pie chart and stats cards</li>

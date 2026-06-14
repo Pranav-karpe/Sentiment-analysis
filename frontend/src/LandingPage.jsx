@@ -118,7 +118,7 @@ export default function LandingPage({ dark }) {
     },
     {
       q: "What file formats can I upload?",
-      a: "You can upload .txt files, .pdf documents, and images (.jpg, .jpeg, .png). Images are processed using Tesseract OCR to extract text before analysis.",
+      a: "You can upload .txt files and .pdf documents. Text is extracted automatically and analyzed instantly.",
     },
     {
       q: "Is my data private?",
@@ -199,7 +199,7 @@ export default function LandingPage({ dark }) {
           </Reveal>
           <div className="grid sm:grid-cols-3 gap-4">
             {[
-              { step: "01", title: "Paste or Upload", desc: "Enter text directly, upload a .txt/.pdf file, or even a photo with text — OCR extracts it automatically." },
+              { step: "01", title: "Paste or Upload", desc: "Enter text directly into the input box, or upload a .txt or .pdf file — text is extracted automatically." },
               { step: "02", title: "AI Analyzes", desc: "The model vectorizes your text using TF-IDF and classifies it with Logistic Regression in milliseconds." },
               { step: "03", title: "Get Insights", desc: "Receive a Positive, Negative, or Neutral result with a confidence score. Save history and export PDF reports." },
             ].map((item, i) => (
@@ -284,7 +284,7 @@ export default function LandingPage({ dark }) {
                 {[
                   { stat: "< 1s", label: "Analysis time", sub: "Instant results on any text" },
                   { stat: "3", label: "Sentiment classes", sub: "Positive · Negative · Neutral" },
-                  { stat: "4+", label: "File formats", sub: ".txt · .pdf · .jpg · .png" },
+                  { stat: "2", label: "File formats", sub: ".txt · .pdf" },
                 ].map((s) => (
                   <div key={s.label}>
                     <p className="text-4xl font-extrabold text-orange-500 mb-1">{s.stat}</p>
@@ -317,7 +317,7 @@ export default function LandingPage({ dark }) {
           <div className="grid sm:grid-cols-2 gap-4">
             {[
               { icon: "✍️", title: "Type or paste text", desc: "Enter any text directly into the input box. Works with reviews, tweets, emails, survey responses — anything." },
-              { icon: "📎", title: "Or upload a file", desc: "Upload a .txt, .pdf, or image file. The system extracts the text automatically using OCR for images." },
+              { icon: "📎", title: "Or upload a file", desc: "Upload a .txt or .pdf file. Text is extracted automatically and loaded into the analyzer." },
               { icon: "⚡", title: "Hit Analyze", desc: "Click Analyze or press Ctrl+Enter. Results appear instantly with a sentiment label and confidence score." },
               { icon: "📊", title: "Track your history", desc: "Create a free account to save every analysis, view charts, filter by sentiment, and export PDF reports." },
             ].map((item, i) => (
@@ -404,7 +404,7 @@ export default function LandingPage({ dark }) {
                 <span className="font-bold text-lg text-gray-900 dark:text-white">Sentiment<span className="text-orange-500">AI</span></span>
               </div>
               <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-                AI-powered sentiment analysis for text, files, and images. Built with React, Flask, and MongoDB.
+                AI-powered sentiment analysis for text and files. Built with React, Flask, and MongoDB.
               </p>
             </div>
 

@@ -24,12 +24,12 @@ SentimentAI automates this process using a trained machine learning model, givin
 - **Confidence Score** — 0–100% certainty for every prediction
 - **Real-time Analysis** — Results in under 1 second
 - **No Character Limit** — Analyze short tweets or long documents
+- **Batch Analysis** — Paste multiple lines; each is analyzed individually with an overall summary
 
-### File Upload & OCR
-- **Multi-format Support** — `.txt`, `.pdf`, `.jpg`, `.jpeg`, `.png`
+### File Upload
+- **Multi-format Support** — `.txt`, `.pdf`
 - **PDF Text Extraction** — Powered by PyMuPDF
-- **Image OCR** — Extract text from photos using Tesseract OCR
-- **Drag-and-drop** — Simple file upload interface
+- **Plain Text** — UTF-8 decoded directly
 
 ### Analytics Dashboard
 - **Sentiment Overview** — Pie chart showing Positive/Negative/Neutral split
@@ -58,7 +58,6 @@ SentimentAI automates this process using a trained machine learning model, givin
 - **ChatGPT-style Input** — Auto-expanding textarea (starts small, grows as you type, max 300px)
 - **Responsive Design** — Works perfectly on mobile, tablet, and desktop
 - **Smooth Animations** — Scroll-reveal, card hover, result fade-in, logo shimmer
-- **Toast Notifications** — Success, error, and info messages (top-right)
 - **Mobile Menu** — Hamburger navigation for small screens
 - **Keyboard Shortcuts** — Ctrl+Enter to analyze instantly
 
@@ -88,8 +87,6 @@ SentimentAI automates this process using a trained machine learning model, givin
 
 ### File Processing
 - **PyMuPDF (fitz)** — PDF text extraction
-- **pytesseract** — OCR for images
-- **Pillow (PIL)** — Image processing
 
 ### PDF Generation
 - **ReportLab** — PDF report creation with tables and styling
@@ -106,6 +103,8 @@ tlpbl/
 │   │   └── vectorizer.pkl      # TF-IDF vectorizer
 │   ├── app.py                  # Flask API (all routes)
 │   ├── train_model.py          # Model training script
+│   ├── build.sh                # Render build script
+│   ├── render.yaml             # Render deployment config
 │   └── requirements.txt        # Python dependencies
 ├── dataset/
 │   └── twitter.csv             # Training data (Twitter sentiment dataset)
@@ -139,12 +138,11 @@ tlpbl/
 
 1. **User Input**
    - User types text directly into the expanding textarea, OR
-   - Uploads a `.txt`, `.pdf`, or image file (`.jpg`, `.png`)
+   - Uploads a `.txt` or `.pdf` file
 
 2. **File Processing** (if file uploaded)
    - `.txt` → Read as UTF-8
    - `.pdf` → Extract text using PyMuPDF
-   - `.jpg/.png` → OCR using Tesseract to extract text
 
 3. **Sentiment Prediction**
    - Text is vectorized using TF-IDF (Term Frequency-Inverse Document Frequency)
@@ -173,9 +171,6 @@ Before running the project, ensure you have:
 - **Node.js** (v18 or higher) — [Download](https://nodejs.org/)
 - **Python** (v3.9 or higher) — [Download](https://www.python.org/)
 - **MongoDB Atlas Account** — [Sign up free](https://www.mongodb.com/cloud/atlas)
-- **Tesseract OCR** (for image analysis) — [Windows installer](https://github.com/UB-Mannheim/tesseract/wiki)
-  - Install to: `C:\Program Files\Tesseract-OCR\tesseract.exe`
-  - Add to PATH if needed
 
 ---
 
@@ -251,7 +246,7 @@ For production, update `VITE_API_URL` in `frontend/.env.production` to your depl
 
 ### 3. Upload Files
 - Click **Upload file** below the input box
-- Select a `.txt`, `.pdf`, or image file (`.jpg`, `.png`)
+- Select a `.txt` or `.pdf` file
 - Text is extracted automatically and analyzed
 
 ### 4. View Analytics
@@ -283,7 +278,6 @@ Landing Page → Signup/Login → Dashboard (protected) → Analytics (protected
 |--------|-------------------|----------|
 | `.txt` | UTF-8 decode | Unlimited |
 | `.pdf` | PyMuPDF text extraction | Unlimited |
-| `.jpg`, `.png` | Tesseract OCR | Recommended < 5MB |
 
 ### Session Management
 - **Token Expiry:** 48 hours from login
@@ -301,7 +295,7 @@ Landing Page → Signup/Login → Dashboard (protected) → Analytics (protected
 
 ### Sentiment Analysis
 - `POST /predict` — Analyze text sentiment
-- `POST /analyze-file` — Upload and analyze file
+- `POST /analyze-file` — Upload and analyze `.txt` or `.pdf` file
 
 ### History
 - `GET /history?email=<email>` — Fetch user's last 10 analyses
@@ -309,7 +303,7 @@ Landing Page → Signup/Login → Dashboard (protected) → Analytics (protected
 
 ### Export
 - `POST /export-report` — Generate PDF report
-- `GET /export-csv?email=<email>` — Download CSV (if implemented)
+- `GET /export-csv?email=<email>` — Download CSV
 
 ---
 
@@ -359,7 +353,7 @@ Landing Page → Signup/Login → Dashboard (protected) → Analytics (protected
 ### Planned Features
 - [ ] **Transformer Model** — Upgrade to BERT or RoBERTa for better accuracy
 - [ ] **Multi-language Support** — Detect sentiment in Spanish, French, German, etc.
-- [ ] **Batch Analysis** — Upload CSV with multiple texts, get bulk results
+- [ ] **Batch CSV Upload** — Upload CSV with multiple texts, get bulk results
 - [ ] **API Access** — REST API with rate limiting for developers
 - [ ] **Real-time Streaming** — Analyze live Twitter/Reddit feeds
 - [ ] **Sentiment Explanation** — Highlight positive/negative words in the text
@@ -377,8 +371,7 @@ Landing Page → Signup/Login → Dashboard (protected) → Analytics (protected
 
 ## 🐛 Known Issues
 
-- **Neutral sentiment** — Currently not returned by the model (binary classifier). Neutral is only shown if manually added to history.
-- **OCR accuracy** — Tesseract struggles with handwritten text or low-quality images. Use high-resolution scans for best results.
+- **Neutral sentiment** — Currently not returned by the model (binary classifier). Neutral is shown when the model's confidence falls below the threshold.
 - **History limit** — Only last 10 entries are fetched. Pagination not yet implemented.
 - **Guest mode** — Works fully. Sentiment analysis is available without login. History is not saved for guests.
 
@@ -405,7 +398,6 @@ npm run preview
 - [ ] Analyze text (positive, negative, neutral examples)
 - [ ] Upload `.txt` file
 - [ ] Upload `.pdf` file
-- [ ] Upload `.jpg` image with text
 - [ ] View analytics dashboard
 - [ ] Search history
 - [ ] Filter by sentiment
@@ -430,8 +422,6 @@ nltk
 pandas
 reportlab
 PyJWT
-Pillow
-pytesseract
 pymupdf
 certifi
 ```
@@ -454,24 +444,22 @@ certifi
 ## 🚢 Deployment
 
 ### Backend (Flask)
-**Recommended:** Deploy to **Render**, **Railway**, or **AWS EC2**
+**Recommended:** Deploy to **Render**
 
-1. Set environment variables (MongoDB URI, JWT secret)
-2. Install dependencies: `pip install -r requirements.txt`
-3. Run: `gunicorn app:app` (install gunicorn first)
-4. Expose port 5000
+1. Set environment variables in Render dashboard: `MONGO_URI`, `JWT_SECRET`, `FRONTEND_URL`
+2. Build command: `chmod +x build.sh && ./build.sh`
+3. Start command: `gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120`
 
 ### Frontend (React)
-**Recommended:** Deploy to **Vercel**, **Netlify**, or **AWS Amplify**
+**Recommended:** Deploy to **Vercel** or **Netlify**
 
-1. Update API URL in all components:
-   - Replace `http://127.0.0.1:5000` with your backend URL
+1. Set `VITE_API_URL` in environment variables to your Render backend URL
 2. Build: `npm run build`
 3. Deploy the `dist/` folder
 
 ### Database
 - MongoDB Atlas is already cloud-hosted — no deployment needed
-- Ensure IP whitelist allows connections from your backend server
+- Ensure IP whitelist allows connections from your backend server (`0.0.0.0/0` for Render)
 
 ---
 
@@ -481,7 +469,7 @@ certifi
 - **JWT Tokens** — Signed with HS256, expire after 48 hours
 - **HTTPS Required** — Clipboard API (copy button) only works on HTTPS
 - **Input Validation** — Email format, password length, text sanitization
-- **CORS** — Configured to allow frontend origin only (update in production)
+- **CORS** — Configured to allow frontend origin only (set `FRONTEND_URL` in production)
 
 ---
 
