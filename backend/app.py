@@ -538,6 +538,43 @@ def _preprocess_image(img):
     return img.convert("RGB")
 
 
+# Patterns that identify Twitter/X UI noise lines — not tweet body text
+_TWEET_NOISE = re.compile(
+    r"^(\.?@[\w.]+"                        # @username / .@username
+    r"|\d{1,2}[:/]\d{2}(\s?[APap][Mm])?"  # timestamps  12:34 / 12:34 PM
+    r"|\d+\s*(retweets?|likes?|replies?|views?|reposts?|bookmarks?)"  # engagement counts
+    r"|retweet(ed)?|retweeted"
+    r"|like(d|s)?|reply|replies"
+    r"|follow(ing|ers?)?"
+    r"|\d+[KkMm]?\s*(likes?|retweets?|views?|replies?)"
+    r"|share|embed|copy link|report"
+    r"|more|promoted|ad\b"
+    r"|[\u2665\u2764\U0001F499\U0001F9E1\u2B50\U0001F4AC\U0001F504\U0001F4E4]+"  # heart/RT icons
+    r"|\d+$"                               # bare numbers (like/RT counts)
+    r")",
+    re.IGNORECASE
+)
+
+def _extract_tweet_text(raw: str) -> str:
+    """
+    From raw Tesseract output of a tweet screenshot, keep only the tweet body:
+    - Drop username lines, timestamps, engagement counts, and UI chrome.
+    - Collapse remaining lines into a single space-joined string.
+    """
+    lines = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if _TWEET_NOISE.match(line):
+            continue
+        # Drop lines that are purely symbols / single characters
+        if len(re.sub(r"[^\w]", "", line)) < 2:
+            continue
+        lines.append(line)
+    return " ".join(lines)
+
+
 def _run_ocr(image_bytes):
     """
     Extract text from image bytes using Tesseract.
@@ -564,14 +601,14 @@ def _run_ocr(image_bytes):
     preprocessed = _preprocess_image(img)
     try:
         # PSM 6: single uniform block of text -- best for screenshots and scans
-        text = _pytesseract.image_to_string(preprocessed, config="--psm 6 --oem 3").strip()
-        if text:
-            print(f"[OCR] Tesseract extracted {len(text)} chars")
-            return text, None
-        # Second pass on raw image in case preprocessing reduced accuracy
-        text = _pytesseract.image_to_string(img, config="--psm 6 --oem 3").strip()
-        if text:
-            print(f"[OCR] Tesseract extracted {len(text)} chars (raw image)")
+        raw = _pytesseract.image_to_string(preprocessed, config="--psm 6 --oem 3").strip()
+        if not raw:
+            raw = _pytesseract.image_to_string(img, config="--psm 6 --oem 3").strip()
+        if raw:
+            text = _extract_tweet_text(raw)
+            if not text:
+                text = " ".join(raw.split())  # fallback: collapse as-is
+            print(f"[OCR] Extracted {len(text)} chars")
             return text, None
         print("[OCR] Tesseract returned empty string")
     except Exception as e:
