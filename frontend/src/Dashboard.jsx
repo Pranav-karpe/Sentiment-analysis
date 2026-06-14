@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { authHeaders, clearSession } from "./App";
 import AboutModal from "./AboutModal";
-import LandingPage from "./LandingPage";
 import API from "./api";
+const LandingPage = lazy(() => import("./LandingPage"));
 
 export default function Dashboard({ dark, setDark }) {
   const navigate = useNavigate();
@@ -378,7 +378,9 @@ export default function Dashboard({ dark, setDark }) {
           </div>
         )}
       </main>
-      <LandingPage dark={dark} />
+      <Suspense fallback={null}>
+        <LandingPage dark={dark} />
+      </Suspense>
     </div>
   );
 }

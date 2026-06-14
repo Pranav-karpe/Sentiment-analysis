@@ -7,6 +7,7 @@ import certifi
 import joblib
 import jwt
 import secrets
+import threading
 from datetime import datetime, timezone, timedelta
 
 from flask import Flask, request, jsonify
@@ -70,9 +71,11 @@ if not MONGO_URI:
 is_atlas = MONGO_URI.startswith("mongodb+srv://") or "replicaSet" in MONGO_URI or "mongodb.net" in MONGO_URI
 
 mongo_kwargs = {
-    "serverSelectionTimeoutMS": 30000,
-    "connectTimeoutMS": 30000,
-    "socketTimeoutMS": 30000
+    "serverSelectionTimeoutMS": 5000,
+    "connectTimeoutMS": 5000,
+    "socketTimeoutMS": 10000,
+    "maxPoolSize": 10,
+    "minPoolSize": 1,
 }
 
 if is_atlas:
@@ -164,7 +167,16 @@ def run_sentiment(raw_text):
         return "Neutral", confidence
     return ("Positive" if pos_p > neg_p else "Negative"), confidence
 
+def _save_async(doc):
+    def _run():
+        try:
+            collection.insert_one(doc)
+        except PyMongoError:
+            pass
+    threading.Thread(target=_run, daemon=True).start()
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 def ok(data, code=200):
@@ -374,14 +386,11 @@ def predict():
             s, c = run_sentiment(line)
             results.append({"text": line, "sentiment": s, "confidence": c})
             if email:
-                try:
-                    collection.insert_one({
-                        "user_email": email, "text": line,
-                        "sentiment": s, "confidence": c,
-                        "created_at": datetime.now(timezone.utc)
-                    })
-                except PyMongoError:
-                    pass
+                _save_async({
+                    "user_email": email, "text": line,
+                    "sentiment": s, "confidence": c,
+                    "created_at": datetime.now(timezone.utc)
+                })
         pos = sum(1 for r in results if r["sentiment"] == "Positive")
         neg = sum(1 for r in results if r["sentiment"] == "Negative")
         neu = sum(1 for r in results if r["sentiment"] == "Neutral")
@@ -395,14 +404,11 @@ def predict():
 
     sentiment, confidence = run_sentiment(text)
     if email:
-        try:
-            collection.insert_one({
-                "user_email": email, "text": text,
-                "sentiment": sentiment, "confidence": confidence,
-                "created_at": datetime.now(timezone.utc)
-            })
-        except PyMongoError:
-            pass
+        _save_async({
+            "user_email": email, "text": text,
+            "sentiment": sentiment, "confidence": confidence,
+            "created_at": datetime.now(timezone.utc)
+        })
     return ok({"sentiment": sentiment, "confidence": confidence})
 
 
@@ -803,4 +809,4 @@ def export_report():
 
 if __name__ == "__main__":
     debug_mode = os.getenv("FLASK_DEBUG", "false").lower() == "true"
-    app.run(debug=debug_mode, use_reloader=False)
+    app.run(debug=debug_mode, use_reloader=False, threaded=True)
