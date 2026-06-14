@@ -37,29 +37,42 @@ TESSERACT_AVAILABLE = False
 try:
     import pytesseract as _pytesseract
 
-    # Priority: env var TESSERACT_CMD → PATH → Windows default install path
-    _tess_cmd = os.getenv("TESSERACT_CMD", "").strip()
-    if _tess_cmd and os.path.isfile(_tess_cmd):
-        _pytesseract.pytesseract.tesseract_cmd = _tess_cmd
-        print(f"[OCR] Tesseract path from TESSERACT_CMD env: {_tess_cmd}")
-    else:
-        _which = _shutil.which("tesseract")
-        if _which:
-            _pytesseract.pytesseract.tesseract_cmd = _which
-            print(f"[OCR] Tesseract found via PATH: {_which}")
-        elif os.name == "nt":
-            _win_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-            if os.path.isfile(_win_path):
-                _pytesseract.pytesseract.tesseract_cmd = _win_path
-                print(f"[OCR] Tesseract found at Windows default path: {_win_path}")
+    # ── Step 1: log raw env/PATH info unconditionally ─────────────────────────
+    _tess_cmd_env = os.getenv("TESSERACT_CMD", "").strip()
+    _tess_which   = _shutil.which("tesseract")
+    print(f"[OCR] TESSERACT_CMD env  : {_tess_cmd_env!r}")
+    print(f"[OCR] shutil.which result: {_tess_which!r}")
 
+    # ── Step 2: resolve binary path (env → PATH → Windows fallback) ──────────
+    if _tess_cmd_env and os.path.isfile(_tess_cmd_env):
+        _pytesseract.pytesseract.tesseract_cmd = _tess_cmd_env
+        print(f"[OCR] Using TESSERACT_CMD env path: {_tess_cmd_env}")
+    elif _tess_which:
+        _pytesseract.pytesseract.tesseract_cmd = _tess_which
+        print(f"[OCR] Using PATH-discovered binary: {_tess_which}")
+    elif os.name == "nt":
+        _win_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+        if os.path.isfile(_win_path):
+            _pytesseract.pytesseract.tesseract_cmd = _win_path
+            print(f"[OCR] Using Windows default path: {_win_path}")
+        else:
+            print(f"[OCR] Windows default path not found: {_win_path}")
+    else:
+        print("[OCR] No tesseract binary found via env, PATH, or Windows default.")
+
+    print(f"[OCR] Final tesseract_cmd: {_pytesseract.pytesseract.tesseract_cmd!r}")
+
+    # ── Step 3: version check (this spawns tesseract --version subprocess) ───
     _ver = _pytesseract.get_tesseract_version()
+    print(f"[OCR] pytesseract.get_tesseract_version(): {_ver}")
+
     TESSERACT_AVAILABLE = True
-    print(f"[OCR] Tesseract ready ✓  (cmd={_pytesseract.pytesseract.tesseract_cmd}, version={_ver})")
+    print(f"[OCR] TESSERACT_AVAILABLE = True  ✓")
 
 except Exception as _tess_err:
-    print(f"[OCR] Tesseract unavailable: {type(_tess_err).__name__}: {_tess_err}")
-    print("[OCR] Image uploads will return an error. On Render, ensure render.yaml buildCommand includes: apt-get install -y tesseract-ocr")
+    print(f"[OCR] TESSERACT_AVAILABLE = False")
+    print(f"[OCR] Failure: {type(_tess_err).__name__}: {_tess_err}")
+    print("[OCR] Fix: ensure build.sh runs: apt-get install -y tesseract-ocr tesseract-ocr-eng")
 
 # ── Flask app ─────────────────────────────────────────────────────────────────
 app = Flask(__name__)
@@ -542,40 +555,100 @@ def _preprocess_image(img):
     return img.convert("RGB")
 
 
-# Patterns that identify Twitter/X UI noise — matched anywhere in a line
-_TWEET_NOISE = re.compile(
-    r"(^|\s)@[\w.]+(\s|$)"               # @username anywhere in line
-    r"|\d{1,2}[:/]\d{2}(\s?[APap][Mm])?" # timestamps  12:34 / 12:34 PM
-    r"|\d+\s*(retweets?|likes?|replies?|views?|reposts?|bookmarks?)"
-    r"|retweet(ed)?|follow(ing|ers?)?"
-    r"|like(d|s)?\s*$|^reply|replies\s*$"
-    r"|share|embed|copy\s*link|report"
-    r"|promoted|\bad\b"
-    r"|[\u2665\u2764\U0001F499\U0001F9E1\u2B50\U0001F4AC\U0001F504\U0001F4E4]"
-    r"|^\d+[KkMm]?$",                     # bare numbers / counts on their own
-    re.IGNORECASE
+# ── Tweet text extraction ────────────────────────────────────────────────────
+
+# Phase 1 — inline scrub: remove these tokens from within a line before
+# deciding whether the line is content or noise.
+_SCRUB = re.compile(
+    r"@[\w.]+"                                      # @handle
+    r"|https?://\S+"                                 # URLs
+    r"|\b\d{1,2}:\d{2}(\s?[APap][Mm])?\b"           # time  12:34 / 12:34 PM
+    r"|·"                                            # Twitter separator dot
+    r"|\|"                                           # pipe OCR noise
+    r"|[\u2665\u2764\U0001F499\U0001F9E1\u2B50"      # heart/star emoji
+    r"\U0001F4AC\U0001F504\U0001F4E4"               # speech/retweet/DM emoji
+    r"\U0001F44D\U0001F44E\U0001F602\U0001F622"     # common reaction emoji
+    r"\U0001F1E6-\U0001F1FF]",                       # flag emoji range
+    re.IGNORECASE,
 )
 
-# Minimum real-word characters a line must have to be kept
-_MIN_WORD_CHARS = 4
+# Phase 2 — whole-line drop: after scrubbing, if the line matches any of
+# these patterns it is pure UI chrome and is discarded entirely.
+_NOISE_LINE = re.compile(
+    r"^[\W\d]+$"                                    # no real word characters at all
+    # display name + handle on one line  e.g. "Alex Parker @alexparker"
+    r"|^[A-Z][\w\s]{1,40}@[\w.]+$"
+    # handle-only line  e.g. "@alexparker_23"
+    r"|^@[\w.]+$"
+    # date / time stamps  e.g. "Jun 12", "March 4, 2024", "2h", "Apr 15 · 2023"
+    r"|^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}(,?\s*\d{4})?$"
+    r"|^\d{1,2}\s*(h|m|s|hr|min|sec|hours?|minutes?|seconds?)\b"
+    r"|^\d{4}$"                                     # bare year
+    # engagement counts  e.g. "128 Retweets", "1.2K Likes", "34 Quote Tweets"
+    r"|\d[\d.,]*\s*[KkMm]?\s*(retweets?|quote\s*tweets?|likes?|replies?"
+    r"|views?|reposts?|bookmarks?|comments?|shares?)"
+    # standalone engagement labels (no number) that OCR puts on their own line
+    r"|^(retweets?|quote\s*tweets?|likes?|replies?|views?|reposts?|bookmarks?)$"
+    # Twitter/X UI labels
+    r"|^(home|explore|notifications?|messages?|bookmarks?|lists?|profile|more)$"
+    r"|^(follow(ing|ers?)?|followed\s+by|follows\s+you)$"
+    r"|^(reply(ing)?|replying\s+to)\b"
+    r"|^(retweet(ed)?|quote\s*tweet)$"
+    r"|^(share|embed|copy\s*link|report|promoted|mute|block|unfollow)$"
+    r"|^(show\s+this\s+thread|show\s+more|translate\s+tweet)$"
+    r"|^tweet\s+your\s+reply$"
+    r"|^\d+[KkMm]?$",                               # bare count  e.g. "1.2K"
+    re.IGNORECASE,
+)
+
+# Phase 3 — tail cut: the tweet body ends before the first line that is
+# purely an engagement block.  Everything from that line onward is dropped.
+_ENGAGEMENT_TAIL = re.compile(
+    r"^[\d.,]+\s*[KkMm]?\s*(retweets?|quote\s*tweets?|likes?|replies?"
+    r"|views?|reposts?|bookmarks?|comments?|shares?)\b"
+    r"|^(retweets?|quote\s*tweets?|likes?|replies?|views?)\b",
+    re.IGNORECASE,
+)
+
 
 def _extract_tweet_text(raw: str) -> str:
     """
-    From raw Tesseract output of a tweet screenshot, keep only the tweet body.
-    Drops usernames, timestamps, engagement counts, and UI chrome.
-    Collapses surviving lines into one space-joined string.
+    Clean raw Tesseract output of a tweet screenshot down to the tweet body only.
+
+    Pipeline:
+      1. Scrub noise tokens inline from each line.
+      2. Drop lines that are entirely UI chrome / metadata after scrubbing.
+      3. Truncate at the first engagement-count line (likes / retweets / etc.).
+      4. Collapse remaining lines into a single space-joined string.
     """
-    lines = []
+    cleaned_lines = []
     for line in raw.splitlines():
-        line = line.strip()
+        # ── Phase 1: scrub inline noise tokens ───────────────────────────────
+        line = _SCRUB.sub("", line).strip()
+        # collapse multiple spaces left by scrubbing
+        line = re.sub(r" {2,}", " ", line)
         if not line:
             continue
-        if _TWEET_NOISE.search(line):
+
+        # ── Phase 2: drop whole-line UI/metadata ─────────────────────────────
+        if _NOISE_LINE.search(line):
             continue
-        if len(re.sub(r"[^\w]", "", line)) < _MIN_WORD_CHARS:
+
+        # drop lines with fewer than 3 real word characters (OCR garbage)
+        if len(re.sub(r"[^\w]", "", line)) < 3:
             continue
-        lines.append(line)
-    return " ".join(lines)
+
+        cleaned_lines.append(line)
+
+    # ── Phase 3: cut engagement tail ─────────────────────────────────────────
+    cutoff = len(cleaned_lines)
+    for i, line in enumerate(cleaned_lines):
+        if _ENGAGEMENT_TAIL.search(line):
+            cutoff = i
+            break
+
+    body_lines = cleaned_lines[:cutoff]
+    return " ".join(body_lines).strip()
 
 
 def _run_ocr(image_bytes):
