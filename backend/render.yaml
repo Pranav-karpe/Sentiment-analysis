@@ -14,5 +14,3 @@ services:
         sync: false
       - key: FLASK_DEBUG
         value: false
-      - key: TESSERACT_CMD
-        value: /usr/bin/tesseract

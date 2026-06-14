@@ -8,9 +8,6 @@ pandas
 werkzeug
 reportlab
 PyJWT
-Pillow
-pytesseract
-pymupdf
 certifi
 gunicorn
 python-dotenv
