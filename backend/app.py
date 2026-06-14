@@ -163,6 +163,10 @@ SARCASM_SIGNALS = [
     "totally fine", "absolutely love", "love waiting", "love being",
     "thanks a lot", "thanks so much", "great job", "well done",
     "oh sure", "of course", "obviously", "clearly", "as if",
+    # internet/tech frustration sarcasm
+    "love it when", "love when", "love how", "love the way",
+    "nothing better than", "what could be better", "best thing ever",
+    "stops working", "stopped working", "not working", "isn't working",
 ]
 
 NEUTRAL_THRESHOLD = 0.62
@@ -538,38 +542,37 @@ def _preprocess_image(img):
     return img.convert("RGB")
 
 
-# Patterns that identify Twitter/X UI noise lines — not tweet body text
+# Patterns that identify Twitter/X UI noise — matched anywhere in a line
 _TWEET_NOISE = re.compile(
-    r"^(\.?@[\w.]+"                        # @username / .@username
-    r"|\d{1,2}[:/]\d{2}(\s?[APap][Mm])?"  # timestamps  12:34 / 12:34 PM
-    r"|\d+\s*(retweets?|likes?|replies?|views?|reposts?|bookmarks?)"  # engagement counts
-    r"|retweet(ed)?|retweeted"
-    r"|like(d|s)?|reply|replies"
-    r"|follow(ing|ers?)?"
-    r"|\d+[KkMm]?\s*(likes?|retweets?|views?|replies?)"
-    r"|share|embed|copy link|report"
-    r"|more|promoted|ad\b"
-    r"|[\u2665\u2764\U0001F499\U0001F9E1\u2B50\U0001F4AC\U0001F504\U0001F4E4]+"  # heart/RT icons
-    r"|\d+$"                               # bare numbers (like/RT counts)
-    r")",
+    r"(^|\s)@[\w.]+(\s|$)"               # @username anywhere in line
+    r"|\d{1,2}[:/]\d{2}(\s?[APap][Mm])?" # timestamps  12:34 / 12:34 PM
+    r"|\d+\s*(retweets?|likes?|replies?|views?|reposts?|bookmarks?)"
+    r"|retweet(ed)?|follow(ing|ers?)?"
+    r"|like(d|s)?\s*$|^reply|replies\s*$"
+    r"|share|embed|copy\s*link|report"
+    r"|promoted|\bad\b"
+    r"|[\u2665\u2764\U0001F499\U0001F9E1\u2B50\U0001F4AC\U0001F504\U0001F4E4]"
+    r"|^\d+[KkMm]?$",                     # bare numbers / counts on their own
     re.IGNORECASE
 )
 
+# Minimum real-word characters a line must have to be kept
+_MIN_WORD_CHARS = 4
+
 def _extract_tweet_text(raw: str) -> str:
     """
-    From raw Tesseract output of a tweet screenshot, keep only the tweet body:
-    - Drop username lines, timestamps, engagement counts, and UI chrome.
-    - Collapse remaining lines into a single space-joined string.
+    From raw Tesseract output of a tweet screenshot, keep only the tweet body.
+    Drops usernames, timestamps, engagement counts, and UI chrome.
+    Collapses surviving lines into one space-joined string.
     """
     lines = []
     for line in raw.splitlines():
         line = line.strip()
         if not line:
             continue
-        if _TWEET_NOISE.match(line):
+        if _TWEET_NOISE.search(line):
             continue
-        # Drop lines that are purely symbols / single characters
-        if len(re.sub(r"[^\w]", "", line)) < 2:
+        if len(re.sub(r"[^\w]", "", line)) < _MIN_WORD_CHARS:
             continue
         lines.append(line)
     return " ".join(lines)
