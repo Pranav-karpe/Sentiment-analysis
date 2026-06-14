@@ -29,23 +29,6 @@ export default function Home({ dark, setDark }) {
     } finally { setLoading(false); }
   };
 
-  const analyzeFile = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setError(""); setResult(null); setLoading(true);
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("email", user?.email ?? "");
-    try {
-      const headers = authHeaders().headers || {};
-      const res = await axios.post(`${API}/analyze-file`, fd, { headers });
-      setResult({ sentiment: res.data.sentiment, confidence: res.data.confidence });
-      setText(res.data.text || "");
-    } catch (ex) {
-      setError(ex.response?.data?.error || "File analysis failed.");
-    } finally { setLoading(false); e.target.value = ""; }
-  };
-
   const exportPDF = async () => {
     try {
       const res = await axios.post(`${API}/export-report`,
@@ -137,12 +120,6 @@ export default function Home({ dark, setDark }) {
           <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/[0.02]">
             <div className="flex items-center gap-3">
               <span className="text-xs text-gray-400 dark:text-gray-600 font-mono">{text.length} / 5000 chars</span>
-              {/* File upload — .txt, .pdf, .jpg, .jpeg, .png */}
-              <label className="text-xs text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 transition-colors cursor-pointer flex items-center gap-1">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-                Upload file
-                <input type="file" accept=".txt,.pdf,.jpg,.jpeg,.png" className="hidden" onChange={analyzeFile} />
-              </label>
             </div>
             <div className="flex items-center gap-3">
               {text.length > 0 && (

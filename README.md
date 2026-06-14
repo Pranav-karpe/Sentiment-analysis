@@ -27,9 +27,7 @@ SentimentAI automates this process using a trained machine learning model, givin
 - **Batch Analysis** — Paste multiple lines; each is analyzed individually with an overall summary
 
 ### File Upload
-- **Multi-format Support** — `.txt`, `.pdf`
-- **PDF Text Extraction** — Powered by PyMuPDF
-- **Plain Text** — UTF-8 decoded directly
+- **Plain Text Support** — `.txt` files, UTF-8 decoded directly
 
 ### Analytics Dashboard
 - **Sentiment Overview** — Pie chart showing Positive/Negative/Neutral split
@@ -86,7 +84,7 @@ SentimentAI automates this process using a trained machine learning model, givin
 - **pymongo** — MongoDB driver for Python
 
 ### File Processing
-- **PyMuPDF (fitz)** — PDF text extraction
+- (none — text input only)
 
 ### PDF Generation
 - **ReportLab** — PDF report creation with tables and styling
@@ -137,14 +135,9 @@ tlpbl/
 ### Workflow
 
 1. **User Input**
-   - User types text directly into the expanding textarea, OR
-   - Uploads a `.txt` or `.pdf` file
+   - User types text directly into the expanding textarea
 
-2. **File Processing** (if file uploaded)
-   - `.txt` → Read as UTF-8
-   - `.pdf` → Extract text using PyMuPDF
-
-3. **Sentiment Prediction**
+2. **Sentiment Prediction**
    - Text is vectorized using TF-IDF (Term Frequency-Inverse Document Frequency)
    - Logistic Regression model predicts sentiment class (0 = Negative, 1 = Positive)
    - Confidence score calculated from prediction probabilities
@@ -244,18 +237,13 @@ For production, update `VITE_API_URL` in `frontend/.env.production` to your depl
 - Press **Ctrl+Enter** or click **Analyze**
 - Result appears instantly with sentiment label and confidence score
 
-### 3. Upload Files
-- Click **Upload file** below the input box
-- Select a `.txt` or `.pdf` file
-- Text is extracted automatically and analyzed
-
-### 4. View Analytics
+### 3. View Analytics
 - Click **Dashboard** in the navbar
 - See your analysis history, charts, and stats
 - Search or filter by sentiment type
 - Delete any entry with the ✕ button
 
-### 5. Export Reports
+### 4. Export Reports
 - After analyzing, click **Download PDF** to get a formatted report
 - On the Dashboard, click **Download CSV** to export full history
 
@@ -274,10 +262,9 @@ Landing Page → Signup/Login → Dashboard (protected) → Analytics (protected
 - **Neutral** — Factual, balanced, or unclear tone (😐 yellow)
 
 ### File Support
-| Format | Extraction Method | Max Size |
-|--------|-------------------|----------|
-| `.txt` | UTF-8 decode | Unlimited |
-| `.pdf` | PyMuPDF text extraction | Unlimited |
+| Format | Extraction Method |
+|--------|-------------------|
+| `.txt` | UTF-8 decode |
 
 ### Session Management
 - **Token Expiry:** 48 hours from login
@@ -295,7 +282,6 @@ Landing Page → Signup/Login → Dashboard (protected) → Analytics (protected
 
 ### Sentiment Analysis
 - `POST /predict` — Analyze text sentiment
-- `POST /analyze-file` — Upload and analyze `.txt` or `.pdf` file
 
 ### History
 - `GET /history?email=<email>` — Fetch user's last 10 analyses
@@ -417,13 +403,14 @@ flask-cors
 pymongo
 joblib
 scikit-learn
-werkzeug
-nltk
+numpy
 pandas
+werkzeug
 reportlab
 PyJWT
-pymupdf
 certifi
+gunicorn
+python-dotenv
 ```
 
 ### Frontend (`package.json`)

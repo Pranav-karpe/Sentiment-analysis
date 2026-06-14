@@ -57,28 +57,6 @@ export default function Dashboard({ dark, setDark }) {
     } finally { setLoading(false); }
   };
 
-  const analyzeFile = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    e.target.value = "";
-    if (!/\.(txt|pdf)$/i.test(file.name)) {
-      setError("Only .txt and .pdf files are supported.");
-      return;
-    }
-    setError(""); setResult(null); setLoading(true);
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("email", user?.email ?? "");
-    try {
-      const headers = authHeaders().headers || {};
-      const res = await axios.post(`${API}/analyze-file`, fd, { headers });
-      setResult({ sentiment: res.data.sentiment, confidence: res.data.confidence });
-      setText(res.data.text || "");
-    } catch (ex) {
-      setError(ex.response?.data?.error || "File analysis failed.");
-    } finally { setLoading(false); }
-  };
-
   const exportPDF = async () => {
     try {
       const res = await axios.post(
