@@ -52,6 +52,7 @@ export default function AboutPage() {
           <li>Analytics dashboard with pie chart and stats cards</li>
           <li>PDF report export with session summary</li>
           <li>Dark / light mode with glassy UI and animations</li>
+          <li>Direct text input with Ctrl+Enter shortcut for instant analysis</li>
           <li>Fully responsive — works on mobile, tablet, and desktop</li>
         </ul>
       </section>

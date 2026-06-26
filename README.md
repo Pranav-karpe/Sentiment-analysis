@@ -26,8 +26,8 @@ SentimentAI automates this process using a trained machine learning model, givin
 - **No Character Limit** — Analyze short tweets or long documents
 - **Batch Analysis** — Paste multiple lines; each is analyzed individually with an overall summary
 
-### File Upload
-- **Plain Text Support** — `.txt` files, UTF-8 decoded directly
+### Text Input
+- **Direct Text Entry** — Paste or type text directly into the analyzer
 
 ### Analytics Dashboard
 - **Sentiment Overview** — Pie chart showing Positive/Negative/Neutral split
@@ -264,7 +264,7 @@ Landing Page → Signup/Login → Dashboard (protected) → Analytics (protected
 ### File Support
 | Format | Extraction Method |
 |--------|-------------------|
-| `.txt` | UTF-8 decode |
+| Direct text input | Paste or type text |
 
 ### Session Management
 - **Token Expiry:** 48 hours from login
@@ -339,7 +339,7 @@ Landing Page → Signup/Login → Dashboard (protected) → Analytics (protected
 ### Planned Features
 - [ ] **Transformer Model** — Upgrade to BERT or RoBERTa for better accuracy
 - [ ] **Multi-language Support** — Detect sentiment in Spanish, French, German, etc.
-- [ ] **Batch CSV Upload** — Upload CSV with multiple texts, get bulk results
+- [ ] **Batch CSV Analysis** — Paste multiple lines of text, get bulk results
 - [ ] **API Access** — REST API with rate limiting for developers
 - [ ] **Real-time Streaming** — Analyze live Twitter/Reddit feeds
 - [ ] **Sentiment Explanation** — Highlight positive/negative words in the text
@@ -382,8 +382,7 @@ npm run preview
 - [ ] Signup with new email
 - [ ] Login with existing account
 - [ ] Analyze text (positive, negative, neutral examples)
-- [ ] Upload `.txt` file
-- [ ] Upload `.pdf` file
+- [ ] Paste text into analyzer
 - [ ] View analytics dashboard
 - [ ] Search history
 - [ ] Filter by sentiment

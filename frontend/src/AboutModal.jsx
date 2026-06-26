@@ -9,13 +9,6 @@ const FEATURES = [
     tags: ["ML Model", "TF-IDF", "Confidence Score"],
   },
   {
-    icon: "📁",
-    color: "blue",
-    title: "File Upload",
-    desc: "Upload .txt or .pdf files. Text is extracted automatically and analyzed instantly.",
-    tags: [".txt", ".pdf"],
-  },
-  {
     icon: "🔐",
     color: "purple",
     title: "Authentication & Sessions",
@@ -54,7 +47,7 @@ const FEATURES = [
     icon: "⚡",
     color: "orange",
     title: "Real-time & Keyboard Shortcuts",
-    desc: "Press Ctrl+Enter to analyze instantly. Auto-resizing textarea with no character limit. File upload result loads directly into the input.",
+    desc: "Press Ctrl+Enter to analyze instantly. Auto-resizing textarea with no character limit.",
     tags: ["Ctrl+Enter", "Auto-resize", "No Char Limit"],
   },
 ];

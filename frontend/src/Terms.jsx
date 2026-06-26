@@ -14,7 +14,7 @@ export default function Terms() {
           <li>You may use SentimentAI for personal, educational, or commercial purposes.</li>
           <li>You must not use the service to analyze illegal, harmful, or abusive content.</li>
           <li>You must not attempt to reverse-engineer, hack, or disrupt the service.</li>
-          <li>You are responsible for the content you upload and analyze.</li>
+          <li>You are responsible for the content you submit and analyze.</li>
         </ul>
       </section>
 

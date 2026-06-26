@@ -117,8 +117,8 @@ export default function LandingPage({ dark }) {
       a: "The model detects Positive, Negative, and Neutral sentiment. Each result includes a confidence score (0–100%) so you know how certain the model is about its prediction.",
     },
     {
-      q: "What file formats can I upload?",
-      a: "You can upload .txt files and .pdf documents. Text is extracted automatically and analyzed instantly.",
+      q: "How do I analyze text?",
+      a: "Paste or type text directly into the analyzer. Each line is processed instantly and results are shown with a confidence score.",
     },
     {
       q: "Is my data private?",
@@ -199,7 +199,7 @@ export default function LandingPage({ dark }) {
           </Reveal>
           <div className="grid sm:grid-cols-3 gap-4">
             {[
-              { step: "01", title: "Paste or Upload", desc: "Enter text directly into the input box, or upload a .txt or .pdf file — text is extracted automatically." },
+              { step: "01", title: "Paste Text", desc: "Enter text directly into the input box. Each line is analyzed instantly as soon as you press Analyze." },
               { step: "02", title: "AI Analyzes", desc: "The model vectorizes your text using TF-IDF and classifies it with Logistic Regression in milliseconds." },
               { step: "03", title: "Get Insights", desc: "Receive a Positive, Negative, or Neutral result with a confidence score. Save history and export PDF reports." },
             ].map((item, i) => (
@@ -284,7 +284,7 @@ export default function LandingPage({ dark }) {
                 {[
                   { stat: "< 1s", label: "Analysis time", sub: "Instant results on any text" },
                   { stat: "3", label: "Sentiment classes", sub: "Positive · Negative · Neutral" },
-                  { stat: "2", label: "File formats", sub: ".txt · .pdf" },
+                  { stat: "1", label: "Input method", sub: "Direct text entry" },
                 ].map((s) => (
                   <div key={s.label}>
                     <p className="text-4xl font-extrabold text-orange-500 mb-1">{s.stat}</p>
@@ -317,7 +317,7 @@ export default function LandingPage({ dark }) {
           <div className="grid sm:grid-cols-2 gap-4">
             {[
               { icon: "✍️", title: "Type or paste text", desc: "Enter any text directly into the input box. Works with reviews, tweets, emails, survey responses — anything." },
-              { icon: "📎", title: "Or upload a file", desc: "Upload a .txt or .pdf file. Text is extracted automatically and loaded into the analyzer." },
+              { icon: "✍️", title: "Paste text directly", desc: "Type or paste any text into the analyzer and get an instant sentiment result." },
               { icon: "⚡", title: "Hit Analyze", desc: "Click Analyze or press Ctrl+Enter. Results appear instantly with a sentiment label and confidence score." },
               { icon: "📊", title: "Track your history", desc: "Create a free account to save every analysis, view charts, filter by sentiment, and export PDF reports." },
             ].map((item, i) => (
